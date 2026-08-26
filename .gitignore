@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# 환경변수 / 자격증명 - 절대 커밋 금지!!!!
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+aws_credentials*
+.aws/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
