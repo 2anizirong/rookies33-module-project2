@@ -110,7 +110,9 @@ docs: API 규격 문서 초안 작성
 
 - `main` : 항상 동작하는 상태만 유지 (바로 push 지양)
 - `web` : 웹/AWS 팀 작업 브랜치
+  - 예) `web/ian`, `web/min`, `web/hyun`: 이름 나눠서 브랜치 관리
 - `diagnosis` : 진단 도구 팀 작업 브랜치
+  - 예) `diagnosis/yeop`, `diagnosis/tae`, `diagnosis/yoonho`: 이름 나눠서 브랜치 관리
 - `dashboard` : 대시보드 팀 작업 브랜치
 
 ```bash
