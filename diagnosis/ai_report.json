@@ -1,0 +1,1060 @@
+{
+  "provider": "openai",
+  "analysis_type": "security_intelligence",
+  "model": "gpt-5",
+  "safe_evidence": {
+    "schema": "diagnosis-safe-evidence-v2",
+    "confirmed_summary": {
+      "parameter_count": 1,
+      "ssrf_candidate_count": 1,
+      "vulnerable_candidate_count": 1,
+      "imds_reachable": true,
+      "temporary_credentials_exposed": true,
+      "cloud_api_access_confirmed": true,
+      "overall_cloud_impact": "medium"
+    },
+    "stage1_parameter_discovery": {
+      "parameter_count": 1,
+      "parameters": [
+        {
+          "name": "url",
+          "method": "GET",
+          "location": "query"
+        }
+      ]
+    },
+    "stage2_sink_discovery": {
+      "candidate_count": 1,
+      "candidates": [
+        {
+          "parameter": "url",
+          "method": "GET",
+          "location": "query",
+          "server_request_detected": true
+        }
+      ]
+    },
+    "stage3_bypass_diagnosis": {
+      "results": [
+        {
+          "result": "vulnerable",
+          "successful_technique": "decimal_ip",
+          "imds_access_confirmed": true,
+          "imds_v2_protected": false,
+          "tests": [
+            {
+              "technique": "direct",
+              "bypassed": false,
+              "verdict": "blocked",
+              "status_code": 403
+            },
+            {
+              "technique": "decimal_ip",
+              "bypassed": true,
+              "verdict": "success",
+              "status_code": 200
+            },
+            {
+              "technique": "hex_ip",
+              "bypassed": true,
+              "verdict": "success",
+              "status_code": 200
+            },
+            {
+              "technique": "octal_ip",
+              "bypassed": true,
+              "verdict": "success",
+              "status_code": 200
+            }
+          ]
+        }
+      ]
+    },
+    "stage4_imds_exposure": {
+      "assessments": [
+        {
+          "imds_reachable": true,
+          "data_extracted": true,
+          "version_tested": "IMDSv1",
+          "v2_enforced": false,
+          "iam_role_detected": true,
+          "temporary_credentials_exposed": true
+        }
+      ]
+    },
+    "stage5_cloud_impact": {
+      "principal_type": "IAMRole",
+      "overall_impact": "medium",
+      "services": [
+        {
+          "service": "S3",
+          "permissions": [
+            "ListBuckets"
+          ],
+          "impact": "enumeration_only"
+        },
+        {
+          "service": "Lambda",
+          "permissions": [
+            "ListFunctions",
+            "GetFunction"
+          ],
+          "impact": "information_disclosure"
+        }
+      ]
+    }
+  },
+  "research_status": {
+    "web_search": "completed",
+    "file_search": "completed",
+    "web_search_used": true,
+    "file_search_used": true
+  },
+  "report": {
+    "status": "completed",
+    "risk": {
+      "severity": "high",
+      "score": 8.2,
+      "reason": "SSRF sink confirmed via url parameter with successful decimal/hex/octal IP filter bypass; IMDSv1 reachable (IMDSv2 not enforced); temporary AWS credentials exposed; and those credentials successfully used to access cloud APIs (S3 ListBuckets; Lambda ListFunctions/GetFunction). Read/list scope only, so not critical."
+    },
+    "vulnerability_classification": {
+      "name": "Server-Side Request Forgery (SSRF)",
+      "cwe": "CWE-918",
+      "description": "The application accepts a user-controlled url (GET, query) that the server uses to make outbound requests. Input filters can be bypassed using alternative IP encodings (decimal/hex/octal), enabling access to internal resources including the EC2 instance metadata service (IMDSv1). Exposed temporary credentials from the instance role allowed read/enumeration against AWS services.",
+      "attack_chain": [
+        "User supplies url parameter causing server-side HTTP request (sink confirmed)",
+        "Filter bypass using decimal/hex/octal IP notation to reach link-local host",
+        "Access EC2 IMDSv1 (v2 not enforced) and extract temporary credentials",
+        "Use temporary credentials to call AWS APIs: S3 ListBuckets; Lambda ListFunctions/GetFunction"
+      ]
+    },
+    "diagnostic_evidence": [
+      {
+        "evidence": "Parameter discovery: url (GET, query); server-side request detected for this parameter.",
+        "security_meaning": "Confirms a controllable SSRF sink exists."
+      },
+      {
+        "evidence": "Bypass diagnosis: decimal_ip/hex_ip/octal_ip techniques returned HTTP 200; direct technique blocked (403).",
+        "security_meaning": "Indicates blacklist-style filtering is in place but is bypassable via alternative IP encodings—classic SSRF filter evasion."
+      },
+      {
+        "evidence": "IMDS exposure: IMDSv1 reachable; v2 not enforced; data extracted; IAM role detected; temporary credentials exposed.",
+        "security_meaning": "Instance metadata service is accessible via SSRF, enabling credential theft (T1552.005)."
+      },
+      {
+        "evidence": "Cloud impact: Principal type IAMRole; confirmed permissions S3:ListBuckets; Lambda:ListFunctions,GetFunction; overall_impact=medium.",
+        "security_meaning": "Temporary credentials are valid and permit read/enumeration across S3 buckets and Lambda functions (information disclosure)."
+      }
+    ],
+    "related_cves": [
+      {
+        "cve_id": "CVE-2019-8451",
+        "relationship": "similar_attack_pattern",
+        "title": "Atlassian Jira SSRF vulnerability",
+        "relevance": "Demonstrates SSRF leading to internal/metadata access patterns similar to this case; not a direct match to the assessed system."
+      },
+      {
+        "cve_id": "CVE-2020-8555",
+        "relationship": "similar_attack_pattern",
+        "title": "Kubernetes kube-controller-manager SSRF",
+        "relevance": "Illustrates SSRF to link-local/loopback targets (e.g., metadata services); conceptually aligned with observed IMDS access."
+      },
+      {
+        "cve_id": "CVE-2021-28918",
+        "relationship": "similar_attack_pattern",
+        "title": "netmask parsing flaw allowing octal IP bypass",
+        "relevance": "Shows how octal/alternative IP formats can bypass filters, consistent with successful decimal/hex/octal bypass here."
+      }
+    ],
+    "cve_assessment": {
+      "direct_match_found": false,
+      "explanation": "The assessed target is not a known product/version with a published CVE. External CVEs are provided only as similar attack patterns."
+    },
+    "real_world_cases": [
+      {
+        "case_name": "Capital One breach",
+        "year": "2019",
+        "description": "Publicly documented incident where SSRF enabled access to EC2 IMDS to obtain credentials, facilitating data theft.",
+        "similarity": "High similarity in attack chain (SSRF → IMDS → credentials)."
+      }
+    ],
+    "official_guidance": [
+      {
+        "organization": "MITRE",
+        "topic": "CWE-918 Server-Side Request Forgery",
+        "guidance": "Defines SSRF and associated risks including access to internal resources via server-initiated requests.",
+        "relevance": "Directly classifies the observed vulnerability."
+      },
+      {
+        "organization": "MITRE ATT&CK",
+        "topic": "T1552.005 Credentials from Instance Metadata",
+        "guidance": "Describes obtaining credentials from cloud instance metadata services.",
+        "relevance": "Matches the confirmed extraction of temporary credentials from IMDSv1."
+      },
+      {
+        "organization": "AWS",
+        "topic": "IMDSv2 defense in depth",
+        "guidance": "Recommend enforcing IMDSv2 and disabling IMDSv1; explains session-oriented tokens and hop limit to mitigate SSRF abuse.",
+        "relevance": "IMDSv1 is currently accessible; v2 not enforced."
+      },
+      {
+        "organization": "AWS",
+        "topic": "Configure and limit access to IMDS",
+        "guidance": "Documents enabling IMDSv2, transition guidance, and limiting access to metadata service.",
+        "relevance": "Actionable steps to close the confirmed exposure."
+      },
+      {
+        "organization": "NSA/CISA",
+        "topic": "Cloud IAM secure practices",
+        "guidance": "Advocates minimizing exposure of metadata and enforcing least privilege.",
+        "relevance": "Supports reducing blast radius of any exposed temporary credentials."
+      }
+    ],
+    "internal_guidance": [
+      {
+        "document": "OWASP Server-Side Request Forgery (SSRF) Prevention Cheat Sheet",
+        "topic": "Application and network-layer SSRF mitigations",
+        "guidance": "Prefer allow-lists; validate and normalize destinations; restrict protocols; disable redirects; block link-local/loopback/RFC1918; move to IMDSv2/disable v1; note bypass risks of deny-lists and alternative IP encodings.",
+        "relationship": "direct",
+        "relevance": "Directly addresses the observed bypasses and IMDSv1 exposure."
+      },
+      {
+        "document": "소프트웨어 개발보안 가이드 (2021.12.29)",
+        "topic": "Avoid DNS-based trust for security decisions",
+        "guidance": "Do not rely on reverse DNS or DNS lookups for trust decisions; validate by resolved IP and ranges instead.",
+        "relationship": "indirect",
+        "relevance": "Supports robust target validation in SSRF defenses."
+      }
+    ],
+    "analysis": {
+      "attack_scenario": "An attacker supplies a crafted url in the GET query. The server performs a request on behalf of the attacker. Although direct requests to sensitive targets are blocked (403), the attacker bypasses filters using decimal/hex/octal IP encodings to reach link-local 169.254.169.254 (EC2 IMDSv1). The attacker retrieves temporary credentials for the instance IAM role and uses them to call AWS APIs including S3 ListBuckets and Lambda ListFunctions/GetFunction.",
+      "confirmed_impact": "- SSRF via url parameter with successful filter bypass using decimal/hex/octal IP encodings\n- Access to EC2 IMDSv1 (v2 not enforced) and extraction of temporary credentials for an IAM role\n- Use of exposed credentials to perform: S3 ListBuckets (bucket enumeration) and Lambda ListFunctions/GetFunction (function enumeration and metadata), i.e., information disclosure/enumeration\n- Overall cloud impact assessed as medium in diagnostics",
+      "potential_impact": "- If additional permissions are attached to the same role (not confirmed here), attacker could escalate to data exfiltration from S3 objects, modification/deployment of Lambda functions, or broader lateral movement\n- Even with read-only scope, function metadata (via GetFunction) may reveal code locations or configuration details aiding reconnaissance\n- Continued exposure increases risk of role policy changes or chained abuses by other actors",
+      "limitations": "- Only one SSRF sink (url) confirmed\n- Successful cloud API calls are limited to read/enumeration (S3 ListBuckets; Lambda ListFunctions/GetFunction); no write/delete/execute capabilities confirmed\n- No specific resource names, account IDs, ARNs, or credential values were captured in this assessment"
+    },
+    "recommendations": [
+      {
+        "priority": "high",
+        "action": "Enforce IMDSv2 and disable IMDSv1 on affected EC2 instances (and set hop limit appropriately).",
+        "reason": "Directly mitigates credential theft via SSRF by requiring session tokens and reducing unauthenticated access."
+      },
+      {
+        "priority": "high",
+        "action": "Implement strict allow-list validation and normalization for outbound destinations used by the server (protocols, hosts/IPs, ports).",
+        "reason": "Prevents attacker-supplied URLs from reaching internal/link-local addresses; avoid blacklist-only controls prone to bypass."
+      },
+      {
+        "priority": "high",
+        "action": "Block link-local, loopback, and private address ranges at application and egress network layers; disable HTTP redirects for SSRF flows.",
+        "reason": "Stops access to IMDS (169.254.169.254) and other internal targets even if application filters are bypassed."
+      },
+      {
+        "priority": "high",
+        "action": "Immediately rotate and revoke any exposed temporary credentials; review CloudTrail/CloudWatch logs for use of the instance role.",
+        "reason": "Limits ongoing abuse and provides detection of any credential utilization."
+      },
+      {
+        "priority": "medium",
+        "action": "Tighten IAM role to least privilege, removing unneeded list/read permissions if not required by workload.",
+        "reason": "Reduces reconnaissance value and blast radius if credentials are exposed again."
+      },
+      {
+        "priority": "medium",
+        "action": "Centralize outbound HTTP(S) via a proxy with policy enforcement and DNS/IP egress controls; monitor for obfuscated IP patterns.",
+        "reason": "Adds defense-in-depth to detect/stop SSRF attempts and IP-encoding bypasses."
+      },
+      {
+        "priority": "medium",
+        "action": "Input handling hardening: canonicalize and re-resolve hostnames to IP, verify against CIDR allow-list, and reject on any redirect or DNS rebinding.",
+        "reason": "Addresses common SSRF evasion techniques, including alternate IP representations and DNS tricks."
+      },
+      {
+        "priority": "low",
+        "action": "Add WAF rules and application telemetry to detect SSRF indicators (e.g., requests targeting metadata endpoints, obfuscated IPs).",
+        "reason": "Improves detection and response time but should not replace application/network controls."
+      }
+    ]
+  },
+  "sources": {
+    "web": [
+      {
+        "title": "CWE - CWE-918: Server-Side Request Forgery (SSRF) (4.20)",
+        "url": "https://cwe.mitre.org/data/definitions/918.html?trk=article-ssr-frontend-pulse_little-text-block&utm_source=openai"
+      },
+      {
+        "title": "Unsecured Credentials: Cloud Instance Metadata API, Sub-technique T1552.005 - Enterprise | MITRE ATT&CK®",
+        "url": "https://attack.mitre.org/techniques/T1552/005/?utm_source=openai"
+      },
+      {
+        "title": "Server Side Request Forgery Prevention - OWASP Cheat Sheet Series",
+        "url": "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html?utm_source=openai"
+      },
+      {
+        "title": "NVD - CVE-2019-8451",
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2019-8451?utm_source=openai"
+      },
+      {
+        "title": "NVD - cve-2020-8555",
+        "url": "https://nvd.nist.gov/vuln/detail/cve-2020-8555?utm_source=openai"
+      },
+      {
+        "title": "NVD - CVE-2021-28918",
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-28918?utm_source=openai"
+      },
+      {
+        "title": "Western District of Washington | Seattle Tech Worker Arrested for Data Theft Involving Large Financial Services Company | United States Department of Justice",
+        "url": "https://www.justice.gov/usao-wdwa/pr/seattle-tech-worker-arrested-data-theft-involving-large-financial-services-company?utm_source=openai"
+      },
+      {
+        "title": "Server-Side Request Forgery Exposes Data of Technology, Industrial and Media Organizations",
+        "url": "https://unit42.paloaltonetworks.com/server-side-request-forgery-exposes-data-of-technology-industrial-and-media-organizations/?utm_source=openai"
+      },
+      {
+        "title": "Add defense in depth against open firewalls, reverse proxies, and SSRF vulnerabilities with enhancements to the EC2 Instance Metadata Service | AWS Security Blog",
+        "url": "https://aws.amazon.com/blogs/security/defense-in-depth-open-firewalls-reverse-proxies-ssrf-vulnerabilities-ec2-instance-metadata-service//?utm_source=openai"
+      },
+      {
+        "title": "Use the Instance Metadata Service to access instance metadata - Amazon Elastic Compute Cloud",
+        "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html?utm_source=openai"
+      },
+      {
+        "title": "Enforce only IMDSv2 access to my EC2 instance metadata | AWS re:Post",
+        "url": "https://repost.aws/knowledge-center/ssm-ec2-enforce-imdsv2?utm_source=openai"
+      },
+      {
+        "title": "Limit access to the Instance Metadata Service - Amazon Elastic Compute Cloud",
+        "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-metadata-limiting-access.html?utm_source=openai"
+      },
+      {
+        "title": "Remediating exposures for EC2 instances - AWS Security Hub",
+        "url": "https://docs.aws.amazon.com/securityhub/latest/userguide/exposure-ec2-instance.html?utm_source=openai"
+      },
+      {
+        "title": "NSA & CISA | Use Secure Cloud Identity and Access Management Practices",
+        "url": "https://media.defense.gov/2024/Mar/07/2003407866/-1/-1/0/CSI-CloudTop10-Identity-Access-Management.PDF?utm_source=openai"
+      },
+      {
+        "title": "Access instance metadata for an EC2 instance - Amazon Elastic Compute Cloud",
+        "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html?utm_source=openai"
+      },
+      {
+        "title": "ListBuckets - Amazon S3",
+        "url": "https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html?utm_source=openai"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://attack.mitre.org/techniques/T1552/005/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cwe.mitre.org/data/published/cwe_v2.12.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://mitre.garnet.ai/mitre/mitre/ta0006/t1522"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cwe.mitre.org/data/definitions/918.html?trk=article-ssr-frontend-pulse_little-text-block"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://attack.mitre.org/datacomponents/DC0076/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://attack.mitre.org/techniques/T1580/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://attack.mitre.org/datacomponents/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://attack.mitre.org/detectionstrategies/DET0169/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://security.glexia.com/threat-intelligence/attack/techniques/T1552.005-cloud-instance-metadata-api"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.justice.gov/usao-wdwa/pr/seattle-tech-worker-arrested-data-theft-involving-large-financial-services-company"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://aws.amazon.com/blogs/security/defense-in-depth-open-firewalls-reverse-proxies-ssrf-vulnerabilities-ec2-instance-metadata-service//"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://security.glexia.com/threat-intelligence/attack/techniques/T1059.009-cloud-api"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://microsoft.github.io/Threat-Matrix-for-Kubernetes/techniques/Instance%20Metadata%20API/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://media.licdn.com/dms/document/media/v2/D561FAQF1UQBqz3qcDA/feedshare-document-pdf-analyzed/feedshare-document-pdf-analyzed/0/1710131584207?e=1768435200&t=RHAD0JWcDzDOJxWjgAjnOWmHewi7sJ2T6Usy3EIl3Qg&v=beta"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cybersecurityhoy.com/wp-content/uploads/2022/06/chapter-2_-using-threat-intelligence-_-comptia-cysa-study-guide-exam-cs0-002-2nd-edition.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://jnswire.s3.amazonaws.com/jns-media/78/ef/9136644/BRODERICKvCAPITAL.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.petefreitag.com/presentations/2023-cwe-25.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://en.wikipedia.org/wiki/Server-side_request_forgery"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.capitalonesettlement.com/Content/Documents/Complaint.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/bugbounty/comments/13f3r7k"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/SecOpsDaily/comments/1rrlnl5/t1059009_cloud_api_in_mitre_attck_explained/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/crowdstrike/comments/18dnavb"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/privacychain/comments/1tiz2ee/field_note_95_defeating_serverside_request/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/crowdstrike/comments/1dvyikz"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/crowdstrike/comments/17s63ri"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2019-8451"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://opencve.alliance.unm.edu/cve/CVE-2019-8451"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://nvd.nist.gov/vuln/detail/cve-2020-8555"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://github.com/kubernetes/kubernetes/issues/91542"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://kubernetes.io/docs/reference/issues-security/official-cve-feed/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://jira.atlassian.com/browse/JRASERVER-69793--"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8555"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://github.com/kubernetes/kubernetes/issues/99425"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://unit42.paloaltonetworks.com/server-side-request-forgery-exposes-data-of-technology-industrial-and-media-organizations/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://advisories.gitlab.com/golang/k8s.io/kubernetes/CVE-2020-8555/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.tenable.com/blog/cve-2019-8451-proof-of-concept-available-for-server-side-request-forgery-ssrf-vulnerability-in"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://jira.atlassian.com/browse/JSWSERVER-26815"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://unit42.paloaltonetworks.com/server-side-request-forgery-exposes-data-of-technology-industrial-and-media-organizations/?_wpnonce=3df28d88da&lg=en&pdf=print"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://unit42.paloaltonetworks.com/server-side-request-forgery-exposes-data-of-technology-industrial-and-media-organizations/?_wpnonce=9f6c41a3cd&lg=en&pdf=print"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://owasp.org/www-chapter-bangkok/slides/2023/2023-03-31_OWASP-API.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://raw.githubusercontent.com/dohsimpson/kubernetes-doc-pdf/master/PDFs/Reference.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cert.europa.eu/publications/security-advisories/2022-047/pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.venustech.com.cn/uploads/2020/08/170947121504.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://arxiv.org/abs/2006.15275"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-options.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://aws.amazon.com/blogs/aws/amazon-ec2-instance-metadata-service-imdsv2-by-default/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-metadata-transition-to-version-2.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://repost.aws/knowledge-center/ssm-ec2-enforce-imdsv2"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/bot-control/techniques.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://repost.aws/knowledge-center/ec2-linux-metadata-retrieval"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://aws.amazon.com/blogs/security/get-the-full-benefits-of-imdsv2-and-disable-imdsv1-across-your-aws-infrastructure/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/bot-control/static-controls.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/waf/latest/developerguide/ddos-automatic-app-layer-response-bp.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/pdfs/prescriptive-guidance/latest/security-reference-architecture-generative-ai/security-reference-architecture-generative-ai.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://repost.aws/knowledge-center/waf-block-common-attacks"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/ec2/latest/devguide/ec2-dg.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://windows2026.net/?_=%2Fpdfs%2Fautoscaling%2Fec2%2Fuserguide%2Fas-dg.pdf%23Xj2F0BkBaIL4qvKHMogVSxgonMEQVCmD%2F6r8"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://aws-shield-tlr.s3.amazonaws.com/2020-Q1_AWS_Shield_TLR.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://awsdocs.s3.amazonaws.com/EC2/2014-02-01/ec2-ug-2014-02-01.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://govapps.md.gov/GovForms/uploads/Appointees/systems-manager-automation-runbook-guide_58.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.youtube.com/watch?v=7jYF7jX8AKo"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.youtube.com/watch?v=B9HPYzVk_dM"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/linuxquestions/comments/1aelymd"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/1bioamv"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/wzvepj"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/xld63m"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/drpdiv"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/ry6gm9"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/1cxywu8"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/rxs3aw"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/netsec/comments/euli42"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/1gh16j1"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/16whe39"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://portswigger.net/web-security/ssrf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://wiki.athena-ctf.com/docs/web/server-side/ssrf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://michalszalkowski.com/payload/ssrf/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cyber-security.wiki/docs/application-security/web/Server-Side-Request-Forgery-SSRF/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://skills.rest/skill/ssrf-ip-filter-bypass"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://portswigger.net/web-security/ssrf/lab-ssrf-with-blacklist-filter"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://securelayer7.net/lab/cve-2026-69192-ip-address-address4-leading-zero-octal-ssrf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://bblabs.es/en/academy/avanzado/ssrf-bypasses-completo"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://bugbountyreality.com/tools/ssrf-ip-obfuscation-generator"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://github.com/yaklang/hack-skills/blob/main/skills/ssrf-server-side-request-forgery/SKILL.md"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://labs.trace37.com/blog/enigma-ssrf-engine/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.prosec-networks.com/wp-content/uploads/wstg-v4.2.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://raw.githubusercontent.com/akr3ch/BugBountyBooks/main/Bug%20Bounty%20Bootcamp%20The%20Guide%20to%20Finding%20and%20Reporting%20Web%20Vulnerabilities%20by%20Vickie%20Li.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://vaadata.com/blog/wp-content/uploads/2022/01/SSRF_vulnerability_cheat_sheet.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://catalogimages.wiley.com/images/db/pdf/9781119735380.excerpt.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/hackthebox/comments/1ry6lxa/htb_facts_got_admin_on_camaleon_cms_cant_get_a/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://wangchuhan.cn/publication/sp24-b/sp24-SSRF.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/mcp/comments/1v937uv/what_i_learned_building_a_pdf_readwrite_mcp/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/SecOpsDaily/comments/1vy40kd/obfuscating_ip_addresses_as_hostnames_tue_aug_25th/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/netsec/comments/mf8i8i"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/bugbounty/comments/pdq10v"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/netsecstudents/comments/1pc65jy/struggling_with_detecting_obfuscated_ips_in/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/bugbounty/comments/1uugmbp/help_with_ssrf/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/hacking/comments/i0vl35"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://media.defense.gov/2024/Mar/07/2003407866/-1/-1/0/CSI-CloudTop10-Identity-Access-Management.PDF"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://nvlpubs.nist.gov/nistpubs/legacy/sp/nistspecialpublication800-144.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://media.defense.gov/2024/Mar/07/2003407866/-1/-1/0/CSI-CLOUDTOP10-IDENTITY-ACCESS-MANAGEMENT.PDF"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-metadata-limiting-access.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://maturitymodel.security.aws.dev/en/2.-foundational/imdsv2/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.cisa.gov/eviction-strategies-tool/info-attack/T1580"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://aws.amazon.com/security/security-bulletins/AWS-2025-021/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.nist.gov/system/files/documents/itl/cloud/NIST_SP-500-291_Version-2_2013_June18_FINAL.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/securityhub/latest/userguide/exposure-ec2-instance.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.cisa.gov/sites/default/files/2023-06/CSSO-SCUBA-eVRF%20Guidebook-guidance%20documentV2_508c.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.cisa.gov/news-events/directives"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://csrc.nist.rip/CSRC/media/Publications/nistir/8006/draft/documents/draft_nistir_8006.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://nvd.nist.gov/vuln/detail/cve-2026-27739"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/SecOpsDaily/comments/1vsp27o/simple_scans_for_cloud_metadata_service_wed_aug/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/NISTControls/comments/nfcjdw"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/e18e5n"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-28918"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-28918"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://nvd.nist.gov/vuln/detail/cve-2021-29418"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://advisories.gitlab.com/npm/netmask/CVE-2021-28918/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-29921"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.kodemsecurity.com/cve-archive/cve-2021-28918"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://security.snyk.io/vuln/SNYK-JS-NETMASK-1089716"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=ssrf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://security-tracker.debian.org/tracker/CVE-2021-28918"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://osv.dev/vulnerability/GHSA-4c7m-wxvm-r7gc"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://research.atomicorp.com/cves/CVE-2021-28918/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.resolvedsecurity.com/vulnerability-catalog/CVE-2021-28918"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://isomer-user-content.by.gov.sg/36/ca18fc73-dfb9-49b3-9746-6449e9e1156c/07-April-2021.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cwe.mitre.org/data/published/cwe_v4.10.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cwe.mitre.org/data/published/cwe_v4.12.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cwe.mitre.org/data/published/cwe_v4.9.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cwe.mitre.org/data/published/cwe_v4.14.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://cwe.mitre.org/data/published/cwe_v4.15.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/webdev/comments/mfqq44"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/lambda/latest/api/API_ListFunctions.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/lambda/latest/api/API_GetFunction.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/list-buckets.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/cli/latest/reference/s3api/list-buckets.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/lambda/latest/dg/example_lambda_GetFunction_section.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/cli/latest/reference/lambda/list-functions.html?highlight=variable"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/pdfs/lambda/latest/api/lambda-api.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/cli/v1/reference/s3api/list-buckets.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/botocore/latest/reference/services/lambda/client/list_functions.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://aws.amazon.com/about-aws/whats-new/2024/10/amazon-s3-new-region-bucket-name-filtering-listbuckets-api/"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/ja_jp/lambda/latest/api/API_GetFunction.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://awsdocs.s3.amazonaws.com/S3/latest/s3-api.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/boto3/latest/reference/services/lambda/paginator/ListFunctions.html"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/sdk-for-net/v3/developer-guide/aws-sdk-net-v3-dg.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://platform.softwareone.com/files/product-media-files/PCP-4838-8135/7085ed9b0c3b3b8087e0af022396f68c84eb0ad1bb7e5e853302a9a29a3aa849.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://venus.strandls.com/biodiv/content/documents/2f9e433b-e148-4941-9965-dc3b07285444/ca66111de4264982841417db6b9b4a3e.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://docs.aws.amazon.com/es_es/AmazonS3/latest/userguide/s3-userguide.pdf"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/1624do1"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/devops/comments/t9epkn"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/k5oi2j"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/11s34ow"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/1d29cvb"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/d6hkfa"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/164j5de"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/14fx8zp"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/dt4zjc"
+      },
+      {
+        "title": "Untitled web source",
+        "url": "https://www.reddit.com/r/aws/comments/xtxyuv"
+      }
+    ],
+    "files": [
+      {
+        "file_id": "file-X77spzY5x5J1nmshc8gqzW",
+        "filename": "Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md",
+        "score": 0.5089,
+        "text_preview": "The application will receive the protocol to use for the request via a dedicated input parameter for which it will verify the value against an allowed list of protocols (`HTTP` or `HTTPS`).\n4. The application will receive the parameter name for the token to pass to the *TargetedApplication* via a dedicated input parameter for which it will only allow the characters set `[a-z]{1,10}`.\n5. The application will receive the token itself via a dedicated input parameter for which it will only allow the characters set `[a-zA-Z0-9]{20}`.\n6. The application will receive and validate (from a security point of view) any business data needed to perform a valid call.\n7. The application will build the HTTP"
+      },
+      {
+        "file_id": "file-X77spzY5x5J1nmshc8gqzW",
+        "filename": "Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md",
+        "score": 0.4866,
+        "text_preview": "> **Regarding the proof of legitimacy of the request**: The *TargetedApplication* that will receive the request must generate a random token (ex: alphanumeric of 20 characters) that is expected to be passed by the caller (in body via a parameter for which the name is also defined by the application itself and only allow characters set `[a-z]{1,10}`) to perform a valid request. The receiving endpoint must only accept HTTP POST requests.\n\n**Validation flow (if one the validation steps fail then the request is rejected):**\n\n1. The application will receive the IP address or domain name of the *TargetedApplication* and it will apply the first validation on the input data using the libraries/regex"
+      },
+      {
+        "file_id": "file-XrYKdRQZ1jbNoiW2A7TjR2",
+        "filename": "소프트웨어_개발보안_가이드(2021.12.29).pdf",
+        "score": 0.4477,
+        "text_preview": "공격자의 악의적인 코드가 실행 가능한 보안약점\r\n16 반복된 인증시도 제한 기능 \r\n부재\r\n인증 시도 수를 제한하지 않아 공격자가 반복적으로 임의 값을 입력하여 계정 \r\n권한을 획득 가능한 보안약점제1장\r\n개\r\n요\r\n제2장\r\n소\r\n프\r\n트\r\n웨\r\n어\r\n개\r\n발\r\n보\r\n안\r\n제3장\r\n분\r\n석\r\n․ 설\r\n계\r\n단\r\n계\r\n보\r\n안\r\n강\r\n화\r\n활\r\n동\r\n제4장\r\n구\r\n현\r\n단\r\n계\r\n시\r\n큐\r\n어\r\n코\r\n딩\r\n가\r\n이\r\n드\r\n제5장\r\n부\r\n록\r\n제5장\r\n부록 349\r\n3. 시간 및 상태\r\n번호 보안약점 설명\r\n1 경쟁조건 : 검사 시점과\r\n사용 시점(TOCTOU)\r\n멀티 프로세스 상에서 자원을 검사하는 시점과 사용하는 시점이 달라서 발생하는\r\n보안약점\r\n2 종료되지 않는 반복문 또는 \r\n재귀함수\r\n종료조건 없는 제어문 사용으로 반복문 또는 재귀함수가 무한히 반복되어 \r\n발생할 수 있는 보안약점\r\n4. 에러처리\r\n번호 보안약점 설명\r\n1 오류 메시지 정보노출 오류메시지나 스택정보에 시스템 내부구조가 포함되어 민감한 정보, 디버깅 \r\n정보가 노출 가능한 보안약점\r\n2 오류상황 대응 부재 시스템 오류상황을 처리하지 않아 프로그램 실행정지 등 의도하지 않은 \r\n상황이 발생 가능한 보안약점\r\n3 부적절한 예외 처리 예외사항을 부적절하게 처리하여 의도하지 않은 상황이 발생 가능한 보안약점\r\n5."
+      },
+      {
+        "file_id": "file-X77spzY5x5J1nmshc8gqzW",
+        "filename": "Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md",
+        "score": 0.4405,
+        "text_preview": "## Deny-list (Last Resort)\n\n**Deny-lists are bypass-prone. Prefer allow-lists.**\n\n**When unavoidable, block these minimum ranges:**\n\n| Service | Block IPs/Domains |\n|---------|-------------------|\n| **AWS IMDS** | `169.254.169.254`, `metadata.amazonaws.com` |\n| **GCP Metadata** | `metadata.google.internal`, `169.254.169.254` |\n| **Azure IMDS** | `169.254.169.254` |\n| **Localhost** | `127.0.0.0/8`, `0.0.0.0/8`, `::1/128` |\n| **RFC1918 Private** | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |\n| **Multicast** | `224.0.0.0/4`, `ff00::/8` |\n\n**Full production example:** [ComputerCraft SSRF deny-list](https://github.com/cc-tweaked/CC-Tweaked/blob/b9ed66983d714bcb5c6bf15b428e01a035106dbf/projec"
+      },
+      {
+        "file_id": "file-XrYKdRQZ1jbNoiW2A7TjR2",
+        "filename": "소프트웨어_개발보안_가이드(2021.12.29).pdf",
+        "score": 0.4321,
+        "text_preview": "시간 및 상태\r\n번호 보안약점 설명\r\n1 경쟁조건 : 검사 시점과\r\n사용 시점(TOCTOU)\r\n멀티 프로세스 상에서 자원을 검사하는 시점과 사용하는 시점이 달라서 발생하는\r\n보안약점\r\n2 종료되지 않는 반복문 또는 \r\n재귀함수\r\n종료조건 없는 제어문 사용으로 반복문 또는 재귀함수가 무한히 반복되어 \r\n발생할 수 있는 보안약점\r\n4. 에러처리\r\n번호 보안약점 설명\r\n1 오류 메시지 정보노출 오류메시지나 스택정보에 시스템 내부구조가 포함되어 민감한 정보, 디버깅 \r\n정보가 노출 가능한 보안약점\r\n2 오류상황 대응 부재 시스템 오류상황을 처리하지 않아 프로그램 실행정지 등 의도하지 않은 \r\n상황이 발생 가능한 보안약점\r\n3 부적절한 예외 처리 예외사항을 부적절하게 처리하여 의도하지 않은 상황이 발생 가능한 보안약점\r\n5. 코드오류\r\n번호 보안약점 설명\r\n1 Null Pointer 역참조 변수의 주소 값이 Null인 객체를 참조하는 보안약점\r\n2 부적절한 자원 해제 사용 완료된 자원을 해제하지 않아 자원이 고갈되어 새로운 입력을 처리할 수 \r\n없는 보안약점\r\n3 해제된 자원 사용 메모리 등 해제된 자원을 참조하여 예기치 않은 오류가 발생하는 보안약점\r\n4 초기화되지 않은 변수 사용 변수를 초기화하지 않고 사용하여 예기치 않은 오류가 발생하는 보안약점\r\n5 신뢰할 수 없는 데이터의\r\n역직렬화\r\n악의적인 코드가 삽입·수정된 직렬화 데이터를 적절"
+      },
+      {
+        "file_id": "file-X77spzY5x5J1nmshc8gqzW",
+        "filename": "Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md",
+        "score": 0.4173,
+        "text_preview": "## References\n\nOnline version of the [SSRF bible](https://docs.google.com/document/d/1v1TkWZtrhzRLy0bYXBcdLUedXGb9njTNIJXa3u9akHM) (PDF version is used in this cheat sheet).\n\nArticle about [Bypassing SSRF Protection](https://medium.com/@vickieli/bypassing-ssrf-protection-e111ae70727b).\n\nArticles about SSRF attacks: [Part 1](https://medium.com/poka-techblog/server-side-request-forgery-ssrf-attacks-part-1-the-basics-a42ba5cc244a), [part 2](https://medium.com/poka-techblog/server-side-request-forgery-ssrf-attacks-part-2-fun-with-ipv4-addresses-eb51971e476d) and  [part 3](https://medium.com/poka-techblog/server-side-request-forgery-ssrf-part-3-other-advanced-techniques-3f48cbcad27e).\n\nArticle ab"
+      },
+      {
+        "file_id": "file-XrYKdRQZ1jbNoiW2A7TjR2",
+        "filename": "소프트웨어_개발보안_가이드(2021.12.29).pdf",
+        "score": 0.4103,
+        "text_preview": "bool trusted;\r\nstring remoteIpAddress = Request.ServerVariables[\"REMOTE_HOST\"];\r\n \r\nif ( remoteIpAddress.Equals(trustedAddr))\r\n{\r\n trusted = true;\r\n Do_something_for_Trust_System();\r\n}\r\n안전한 코드의 예 C#\r\n아래 C 코드는 요청의 신뢰성을 호스트의 이름으로 판별하고 있다. 공격자는 DNS 캐시를 조작하여 \r\n보안 정책을 우회할 수 있다.\r\nstruct hostent *hp;struct in_addr myaddr;\r\nchar* tHost = \"trustme.example.com\";\r\nmyaddr.s_addr=inet_addr(ip_addr_string);\r\n hp = gethostbyaddr((char *) &myaddr, sizeof(struct in_addr), AF_INET);\r\n// 요청의 신뢰성을 호스트의 이름으로 판별하고 있다.\r\nif (hp && !strncmp(hp->h_name, tHost, sizeof(tHost))) {\r\n trusted = true;\r\n} else {\r\n trusted = false;\r\n}\r\n안전하지 않은 코드의 예 C334 소프트웨어 개발보안 가이드\r\n다음의 C 코드는 IP 주소를 직접 비교하여 DNS 캐시 조작에 대해 안전하다.\r\nstruct ho"
+      },
+      {
+        "file_id": "file-XrYKdRQZ1jbNoiW2A7TjR2",
+        "filename": "소프트웨어_개발보안_가이드(2021.12.29).pdf",
+        "score": 0.4081,
+        "text_preview": "결정에\r\n사용되는\r\n부적절한 \r\n입력값\r\n메모리 버퍼\r\n오버플로우\r\n포맷 스트링\r\n삽입\r\n보안\r\n기능\r\n(16개)\r\n적절한 인증없는 \r\n중요 기능 허용\r\n부적절한\r\n인가\r\n중요한 자원에\r\n대한 잘못된\r\n권한 설정\r\n취약한 암호화\r\n알고리즘 사용\r\n암호화되지\r\n않은 중요정보\r\n하드코드된\r\n중요정보\r\n충분하지 않은 \r\n키 길이\r\n사용\r\n적절하지 않은\r\n난수값 사용\r\n취약한\r\n비밀번호 허용\r\n부적절한\r\n전자서명 확인\r\n부적절한\r\n인증서 인증서\r\n유효성 검증\r\n사용자 하드\r\n디스크에 \r\n저장되는 쿠키를 \r\n통한 정보 노출\r\n주석문 안에\r\n포함된 시스템\r\n주요정보\r\n솔트 없이\r\n일방향 해쉬\r\n함수 사용\r\n무결성 검사\r\n없는 코드\r\n다운로드\r\n반복된\r\n인증시도 제한\r\n기능 부재\r\n시간 및\r\n상태\r\n(2개)\r\n경쟁조건: 검사\r\n시점과 사용\r\n시점(TOCTOU)\r\n종료되지 않은 \r\n반복문\r\n재귀함수\r\n에러처리\r\n(3개)\r\n오류메시지\r\n정보 노출\r\n오류 상황\r\n대응 부재\r\n부적절한\r\n예외 처리\r\n코드오류\r\n(5개)\r\nNull Pointer\r\n역참조\r\n부적절한\r\n자원해제\r\n해제된 자원\r\n사용\r\n초기화되지\r\n않은 변수\r\n사용\r\n신뢰할 수 없는\r\n데이터의\r\n역직렬화\r\n캡슐화\r\n(4개)\r\n잘못된 세션에\r\n의한 데이터\r\n정보노출\r\n제거되지 않고 \r\n남은\r\n디버그 코드\r\nPublic 메소드\r\n부터 반환된\r\nPrivate 배열\r\nprivate 배열에\r\npubli"
+      },
+      {
+        "file_id": "file-XrYKdRQZ1jbNoiW2A7TjR2",
+        "filename": "소프트웨어_개발보안_가이드(2021.12.29).pdf",
+        "score": 0.4066,
+        "text_preview": "if (hp && !strncmp(hp->h_name, tHost, sizeof(tHost))) {\r\n trusted = true;\r\n } else {\r\n trusted = false;\r\n}\r\n안전한 코드의 예 C\r\n라. 참고자료\r\n① CWE-350 Reliance on Reverse DNS Resolution for a Security-Critical Action, MITRE, \r\nhttp://cwe.mitre.org/data/definitions/350.html \r\n② CWE-247 Reliance on DNS Lookups in a Security Decision, MITRE, http://cwe.mitre.\r\norg/data/definitions/247.html제1장\r\n개\r\n요\r\n제2장\r\n소\r\n프\r\n트\r\n웨\r\n어\r\n개\r\n발\r\n보\r\n안\r\n제3장\r\n분\r\n석\r\n․ 설\r\n계\r\n단\r\n계\r\n보\r\n안\r\n강\r\n화\r\n활\r\n동\r\n제4장\r\n구\r\n현\r\n단\r\n계\r\n시\r\n큐\r\n어\r\n코\r\n딩\r\n가\r\n이\r\n드\r\n제5장\r\n부\r\n록\r\n제4장\r\n구현단계 시큐어코딩 가이드 335\r\n2. 취약한 API 사용\r\n가. 개요\r\n취약한 API는 보안상 금지된(banned) 함수이거나, 부주의하게 사용될 가능성이 많은 API를 의미한다. 이들 범주의 API에 대해 확인하지 않고 사용할 때 보안 문제를 발생시킬 수 있다. 금지된 API의 \r\n대표적인 예로는 스트링 자료와 관"
+      },
+      {
+        "file_id": "file-Mf3ako2HtWd7YHikeXmxqM",
+        "filename": "주요정보통신기반시설_기술적_취약점_분석_평가_방법_상세가이드.pdf",
+        "score": 0.3516,
+        "text_preview": "서비스 관리 > 2.6 브라우저 종료 시 임시 인터넷 파일 폴더의 내용을 \r\n삭제하도록 설정\r\n취약점 개요\r\n점검내용  브라우저 인터넷 옵션에 있는 고급 설정에 “브라우저를 닫을 때 임시 인터넷 \r\n파일 폴더 비우기” 기능이 활성화 되어 있는지 점검\r\n점검목적\r\n 브라우저 사용 시 생성되는 임시 인터넷 파일 삭제를 통하여 웹 양식에 \r\n입력한 정보(예: 이름 및 주소), 자동 로그인을 위한 웹 사이트 암호 정보 \r\n등을 삭제하여 개인정보의 보안을 향상시키기 위함 \r\n보안위협\r\n 임시 인터넷 파일 폴더 내용을 삭제하지 않을 경우, 다른 계정에 저장된 임시 \r\n인터넷 파일 폴더를 통해 이메일 주소, 웹 사이트 접근 기록 등의 개인정보를 \r\n획득할 수 있음\r\n참고 ※ 임시 인터넷 파일: 웹페이지 방문 시 화면에 나타나는 웹페이지 파일이나 이미지, 플래시 \r\n등을 저장한 파일\r\n점검대상 및 판단기준\r\n대상  Windows XP, Windows 7, Windows 8.1, Windows 10\r\n판단기준\r\n양호 : \"브라우저를 닫을 때 임시 인터넷 파일 폴더 비우기” 설정이 “사용”으로 \r\n설정되어 있는 경우\r\n취약 : \"브라우저를 닫을 때 임시 인터넷 파일 폴더 비우기” 설정이 “사용”으로 \r\n설정되어 있지 않은 경우\r\n조치방법 \"브라우저를 닫을 때 임시 인터넷 파일 폴더 비우기“를 ”사용“으로 설정\r\n점검 및 조치 사례\r\n■ Windows "
+      }
+    ]
+  }
+}

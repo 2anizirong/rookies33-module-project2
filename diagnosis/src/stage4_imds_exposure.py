@@ -21,7 +21,7 @@ Output 규격:
 import requests
 import json
 import re
-from payloads import build_url, DEFAULT_IMDS_IP
+from src.payloads import build_url, DEFAULT_IMDS_IP
 
 
 # 팀 서버가 <pre>...</pre> 로 감싸서 응답을 돌려주는 케이스 언랩용
