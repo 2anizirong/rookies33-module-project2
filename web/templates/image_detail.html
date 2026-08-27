@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="post">
+    <h2>{{ image['caption']|safe if image['caption'] else '(설명 없음)' }}</h2>
+    <div class="meta">업로더: {{ image['uploader'] }} | 이미지 번호: {{ image['id'] }}</div>
+    <hr>
+    <img class="post-img" src="/files/{{ image['filename'] }}" alt="{{ image['caption'] }}">
+    <hr>
+    <a href="/gallery">갤러리로</a>
+    {% if user %}
+        <a href="/gallery/delete/{{ image['id'] }}" style="color:#d90429; margin-left:15px;"
+           onclick="return confirm('삭제할까요?');">삭제</a>
+    {% endif %}
+</div>
+{% endblock %}
