@@ -13,6 +13,10 @@ credentials.json
 aws_credentials*
 .aws/
 
+# Database
+*.sqlite3
+*.db
+
 # IDE
 .vscode/
 .idea/
