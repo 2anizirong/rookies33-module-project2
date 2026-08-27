@@ -13,11 +13,11 @@ import urllib.request
 import urllib.parse
 import socket
 import ipaddress
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-
-# [취약점] 약하고 하드코딩된 시크릿 키
-app.secret_key = "supersecret123"
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -517,4 +517,8 @@ def debug():
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    host = os.getenv("FLASK_HOST", "127.0.0.1")
+    port = int(os.getenv("FLASK_PORT", 5000))
+    app.run(host=host, port=port, debug=True)
+
+
