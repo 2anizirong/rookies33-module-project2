@@ -380,44 +380,89 @@ def normalize_url(url: str) -> str:
 
 
 
+# --------------------- SSRF 보안 레벨 (bee-box 스타일) ---------------------
+# 웹페이지 드롭다운으로 필터 강도를 바꿔가며 실습할 수 있다.
+#   Level 0 : 필터 없음                → 직접·모든 인코딩 성공
+#   Level 1 : 원본 문자열 블랙리스트    → 10/16/8진수·단축 우회 가능
+#   Level 2 : 10진수만 정규화 후 검사   → 16/8진수·단축은 여전히 우회
+#   Level 3 : 완전 정규화 후 검사(방어) → 모든 인코딩 차단
+# 실제 요청(fetch_url)은 항상 정규화된 주소로 나가므로, 필터만 통과하면
+# 어떤 인코딩이든 실제 내부 대상에 도달한다. 필터 강도만 레벨로 바뀐다.
+SSRF_LEVELS = {
+    "0": "Level 0 — 무방비 (필터 없음)",
+    "1": "Level 1 — 문자열 블랙리스트 (인코딩 우회 가능)",
+    "2": "Level 2 — 부분 정규화 (10진수만 차단)",
+    "3": "Level 3 — 완전 방어 (모든 우회 차단)",
+}
+
+
+def is_blocked_by_level(url: str, level: str) -> bool:
+    """레벨별 필터. 차단이면 True. (실제 요청 주소는 항상 normalize_url 사용)"""
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or ""
+
+    if level == "0":
+        return False
+
+    if level == "1":
+        # 원본 URL 문자열에 차단 문자열이 그대로 들어있는지만 검사 (허술).
+        lowered = url.lower()
+        return any(bad in lowered for bad in ("127.0.0.1", "localhost", "169.254.169.254"))
+
+    if level == "2":
+        # 점 없는 10진수 정수 호스트만 정규화해서 검사 (16/8진수·단축은 못 잡음).
+        norm_host = host
+        if "." not in host and host.isdigit():
+            try:
+                norm_host = str(ipaddress.IPv4Address(int(host)))
+            except ValueError:
+                pass
+        return is_blocked_host(norm_host)
+
+    # level 3 (기본): 완전 정규화 후 의미 기준 검사 (팀원 기존 방어 로직).
+    fetch_host = urllib.parse.urlparse(normalize_url(url)).hostname or ""
+    return is_blocked_host(fetch_host)
+
+
 @app.route("/preview", methods=["GET", "POST"])
 def preview():
-    """URL 미리보기 폼"""
-    return render_template("preview.html", user=session.get("username"))
+    """URL 미리보기 폼 (보안 레벨 선택 가능)"""
+    level = request.args.get("level", "0")
+    if level not in SSRF_LEVELS:
+        level = "0"
+    return render_template(
+        "preview.html", user=session.get("username"),
+        level=level, ssrf_levels=SSRF_LEVELS,
+    )
 
 
 @app.route("/fetch")
 def fetch():
-    """URL Preview: 사용자가 지정한 URL을 서버가 대신 요청.
+    """URL Preview: 사용자가 지정한 URL을 서버가 대신 요청 (SSRF).
 
-    [수정] 예전에는 필터가 원본 문자열만 검사하고 실제 요청은 정규화된
-    IP로 나가서, 10진수/16진수/8진수/축약형 등으로 인코딩하면 필터를
-    우회할 수 있었다 (아래는 모두 과거 우회 가능했던 예시).
-    지금은 normalize_url()로 먼저 정규화한 뒤, 그 결과 호스트를
-    is_blocked_host()로 검사하므로 어떤 진법/표기로 와도 동일하게 차단된다.
+    필터 강도는 level 파라미터(0~3)로 결정된다. 실제 요청은 항상
+    normalize_url()로 정규화된 주소로 나가므로, 필터만 통과하면 어떤
+    인코딩(10/16/8진수·단축)이든 실제 내부 대상에 도달한다.
 
-      /fetch?url=http://127.0.0.1:5001/           <- 차단
-      /fetch?url=http://2130706433:5001/          <- 차단 (10진수)
-      /fetch?url=http://0x7f000001:5001/          <- 차단 (16진수)
-      /fetch?url=http://0177.0.0.1:5001/          <- 차단 (8진수)
-
-    AWS 메타데이터 서버(169.254.169.254, link-local) 접근 시도도 마찬가지:
-      /fetch?url=http://169.254.169.254/latest/meta-data/
-      /fetch?url=http://2852039166/latest/meta-data/            <- 차단 (10진수)
-      /fetch?url=http://0xa9fea9fe/latest/meta-data/            <- 차단 (16진수)
-      /fetch?url=http://0251.0376.0251.0376/latest/meta-data/   <- 차단 (8진수)
+      /fetch?url=http://2130706433:5001/...&level=1   <- 통과(우회 성공)
+      /fetch?url=http://2130706433:5001/...&level=2   <- 차단(10진수 잡힘)
+      /fetch?url=http://0x7f000001:5001/...&level=2   <- 통과(16진수 우회)
+      /fetch?url=http://0x7f000001:5001/...&level=3   <- 차단(완전 방어)
     """
     url = request.args.get("url", "")
+    level = request.args.get("level", "0")
+    if level not in SSRF_LEVELS:
+        level = "0"
     if not url:
         return "url 파라미터가 필요합니다.<br><a href='/preview'>돌아가기</a>"
 
-    # 먼저 정규화(진법 디코딩)한 뒤, 실제로 요청이 나갈 호스트를 검사한다.
-    # 필터가 원본 문자열이 아니라 "실제 의미"를 보므로 인코딩 우회가 불가능하다.
+    # 실제 요청은 항상 정규화된 주소로 나간다 (그래야 인코딩 우회가 실제로 도달).
     fetch_url = normalize_url(url)
-    fetch_host = urllib.parse.urlparse(fetch_url).hostname or ""
 
-    if is_blocked_host(fetch_host):
-        return f"차단된 호스트입니다: {url}<br><a href='/preview'>돌아가기</a>", 403
+    # 필터는 선택된 보안 레벨에 따라 강도가 달라진다.
+    if is_blocked_by_level(url, level):
+        return (f"차단된 호스트입니다: {url} "
+                f"(보안 {SSRF_LEVELS[level]})<br><a href='/preview?level={level}'>돌아가기</a>"), 403
 
     try:
         # [취약점] 어떤 URL이든 서버 프로세스가 대신 요청함
@@ -436,9 +481,9 @@ def fetch():
             body = data.decode("utf-8", errors="replace")
         except Exception:
             body = repr(data[:2000])
-        return f"<h2>Fetch 결과 (원본 URL: {url} → 변환: {fetch_url})</h2><pre style='background:#f0f0f0;padding:15px;white-space:pre-wrap;word-break:break-all;'>{body[:5000]}</pre><a href='/preview'>돌아가기</a>"
+        return f"<h2>Fetch 결과 (원본 URL: {url} → 변환: {fetch_url}) · 보안 {SSRF_LEVELS[level]}</h2><pre style='background:#f0f0f0;padding:15px;white-space:pre-wrap;word-break:break-all;'>{body[:5000]}</pre><a href='/preview?level={level}'>돌아가기</a>"
     except Exception as e:
-        return f"요청 실패: {e}<br>원본 URL: {url}<br>변환 URL: {fetch_url}<br><a href='/preview'>돌아가기</a>", 500
+        return f"요청 실패: {e}<br>원본 URL: {url}<br>변환 URL: {fetch_url}<br><a href='/preview?level={level}'>돌아가기</a>", 500
 
 
 # --------------------- 관리자 페이지 ---------------------
