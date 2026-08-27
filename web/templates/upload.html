@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="form-box" method="post" enctype="multipart/form-data">
+    <h2>이미지 업로드</h2>
+    <label>이미지 파일</label>
+    <input type="file" name="image" required>
+    <label>설명 (선택)</label>
+    <input type="text" name="caption" placeholder="이미지에 대한 짧은 설명">
+    <button type="submit">업로드</button>
+</form>
+{% endblock %}

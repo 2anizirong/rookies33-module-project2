@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>이미지 갤러리</h1>
+{% if user %}
+    <p><a href="/gallery/upload" style="background:#ef233c; color:white; padding:8px 16px; border-radius:4px; text-decoration:none;">+ 이미지 업로드</a></p>
+{% endif %}
+
+{% if images %}
+    <div class="gallery-grid">
+        {% for img in images %}
+            <div class="gallery-item">
+                <a href="/gallery/{{ img['id'] }}">
+                    <img src="/files/{{ img['filename'] }}" alt="{{ img['caption'] }}">
+                    <div class="info">
+                        <div class="cap">{{ img['caption']|safe if img['caption'] else '(설명 없음)' }}</div>
+                        <div class="up">by {{ img['uploader'] }}</div>
+                    </div>
+                </a>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <p>업로드된 이미지가 없습니다.</p>
+{% endif %}
+{% endblock %}

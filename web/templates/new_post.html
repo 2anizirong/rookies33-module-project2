@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="form-box" method="post">
+    <h2>새 글 작성</h2>
+    <label>제목</label>
+    <input type="text" name="title" required>
+    <label>내용</label>
+    <textarea name="content" rows="8" required></textarea>
+    <button type="submit">등록</button>
+</form>
+{% endblock %}
