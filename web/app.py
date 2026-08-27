@@ -13,11 +13,11 @@ import urllib.request
 import urllib.parse
 import socket
 import ipaddress
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = Flask(__name__)
+
+# [취약점] 약하고 하드코딩된 시크릿 키
+app.secret_key = "supersecret123"
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -395,6 +395,21 @@ SSRF_LEVELS = {
     "3": "Level 3 — 완전 방어 (모든 우회 차단)",
 }
 
+# 사이트 전역 보안 레벨 (bWAPP 스타일).
+# 드롭다운으로 한 번 정하면 서버가 기억해서 '모든' /fetch 요청에 동일하게 적용된다.
+# 요청마다 URL 파라미터로 받지 않으므로, 앱이 자기 자신을 재호출하는 중첩 SSRF의
+# 안쪽 요청도 바깥과 '같은 레벨'로 처리된다 (바깥/안쪽 불일치가 생기지 않음).
+_SSRF_LEVEL = {"value": "0"}
+
+
+def get_ssrf_level() -> str:
+    return _SSRF_LEVEL["value"]
+
+
+def set_ssrf_level(level: str) -> None:
+    if level in SSRF_LEVELS:
+        _SSRF_LEVEL["value"] = level
+
 
 def is_blocked_by_level(url: str, level: str) -> bool:
     """레벨별 필터. 차단이면 True. (실제 요청 주소는 항상 normalize_url 사용)"""
@@ -426,13 +441,13 @@ def is_blocked_by_level(url: str, level: str) -> bool:
 
 @app.route("/preview", methods=["GET", "POST"])
 def preview():
-    """URL 미리보기 폼 (보안 레벨 선택 가능)"""
-    level = request.args.get("level", "0")
-    if level not in SSRF_LEVELS:
-        level = "0"
+    """URL 미리보기 폼. 드롭다운으로 사이트 전역 보안 레벨을 설정한다."""
+    lv = request.args.get("level")
+    if lv is not None:
+        set_ssrf_level(lv)  # 드롭다운으로 전역 레벨 변경 (없거나 잘못되면 무시)
     return render_template(
         "preview.html", user=session.get("username"),
-        level=level, ssrf_levels=SSRF_LEVELS,
+        level=get_ssrf_level(), ssrf_levels=SSRF_LEVELS,
     )
 
 
@@ -440,29 +455,24 @@ def preview():
 def fetch():
     """URL Preview: 사용자가 지정한 URL을 서버가 대신 요청 (SSRF).
 
-    필터 강도는 level 파라미터(0~3)로 결정된다. 실제 요청은 항상
-    normalize_url()로 정규화된 주소로 나가므로, 필터만 통과하면 어떤
-    인코딩(10/16/8진수·단축)이든 실제 내부 대상에 도달한다.
-
-      /fetch?url=http://2130706433:5001/...&level=1   <- 통과(우회 성공)
-      /fetch?url=http://2130706433:5001/...&level=2   <- 차단(10진수 잡힘)
-      /fetch?url=http://0x7f000001:5001/...&level=2   <- 통과(16진수 우회)
-      /fetch?url=http://0x7f000001:5001/...&level=3   <- 차단(완전 방어)
+    필터 강도는 '사이트 전역 보안 레벨'(get_ssrf_level)로 결정된다.
+    요청마다 URL 파라미터로 받지 않으므로, 앱이 자기 자신을 재호출하는
+    중첩 SSRF의 안쪽 요청도 바깥과 동일한 레벨로 처리된다.
+    실제 요청은 항상 normalize_url()로 정규화된 주소로 나가므로,
+    필터만 통과하면 어떤 인코딩이든 실제 내부 대상에 도달한다.
     """
     url = request.args.get("url", "")
-    level = request.args.get("level", "0")
-    if level not in SSRF_LEVELS:
-        level = "0"
+    level = get_ssrf_level()  # 전역 레벨 — 바깥/안쪽 모든 요청에 동일 적용
     if not url:
         return "url 파라미터가 필요합니다.<br><a href='/preview'>돌아가기</a>"
 
     # 실제 요청은 항상 정규화된 주소로 나간다 (그래야 인코딩 우회가 실제로 도달).
     fetch_url = normalize_url(url)
 
-    # 필터는 선택된 보안 레벨에 따라 강도가 달라진다.
+    # 현재 사이트 전역 레벨에 따라 필터 강도가 달라진다.
     if is_blocked_by_level(url, level):
         return (f"차단된 호스트입니다: {url} "
-                f"(보안 {SSRF_LEVELS[level]})<br><a href='/preview?level={level}'>돌아가기</a>"), 403
+                f"(보안 {SSRF_LEVELS[level]})<br><a href='/preview'>돌아가기</a>"), 403
 
     try:
         # [취약점] 어떤 URL이든 서버 프로세스가 대신 요청함
@@ -481,9 +491,9 @@ def fetch():
             body = data.decode("utf-8", errors="replace")
         except Exception:
             body = repr(data[:2000])
-        return f"<h2>Fetch 결과 (원본 URL: {url} → 변환: {fetch_url}) · 보안 {SSRF_LEVELS[level]}</h2><pre style='background:#f0f0f0;padding:15px;white-space:pre-wrap;word-break:break-all;'>{body[:5000]}</pre><a href='/preview?level={level}'>돌아가기</a>"
+        return f"<h2>Fetch 결과 (원본 URL: {url} → 변환: {fetch_url}) · 보안 {SSRF_LEVELS[level]}</h2><pre style='background:#f0f0f0;padding:15px;white-space:pre-wrap;word-break:break-all;'>{body[:5000]}</pre><a href='/preview'>돌아가기</a>"
     except Exception as e:
-        return f"요청 실패: {e}<br>원본 URL: {url}<br>변환 URL: {fetch_url}<br><a href='/preview?level={level}'>돌아가기</a>", 500
+        return f"요청 실패: {e}<br>원본 URL: {url}<br>변환 URL: {fetch_url}<br><a href='/preview'>돌아가기</a>", 500
 
 
 # --------------------- 관리자 페이지 ---------------------
@@ -517,8 +527,4 @@ def debug():
 
 if __name__ == "__main__":
     init_db()
-    host = os.getenv("FLASK_HOST", "127.0.0.1")
-    port = int(os.getenv("FLASK_PORT", 5000))
-    app.run(host=host, port=port, debug=True)
-
-
+    app.run(host="127.0.0.1", port=5000, debug=True)
