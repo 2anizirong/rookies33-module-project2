@@ -1,0 +1,18 @@
+{
+  "_comment": {
+    "authorized_lab": "true가 아니면 main.py가 require_authorized_lab()에서 바로 예외를 던지고 종료됨 - 허가 없는 대상 스캔 방지용 안전장치",
+    "arjun_methods": "parameter_discovery 단계에서 Arjun이 파라미터를 찾을 때 시도할 HTTP 메서드 목록",
+    "sink_probe_url": "ssrf_sink_discovery 단계에서 쓰는 미끼 URL - 서버가 실제로 이 URL을 요청하면 SSRF로 판정",
+    "sink_probe_marker": "sink_probe_url 응답 본문에서 찾는 마커 문자열 - 이게 반사되어 나오면 SSRF sink 확인",
+    "imds_metadata_path": "ssrf_bypass_diagnosis 단계에서 조회할 EC2 IMDS 메타데이터 경로",
+    "request_timeout": "각 단계 HTTP 요청의 타임아웃(초)",
+    "openai_model": "6단계 AI Security Report 생성(generate_markdown_report)에 사용할 OpenAI 모델명"
+  },
+  "authorized_lab": true,
+  "arjun_methods": ["GET", "POST", "JSON"],
+  "sink_probe_url": "https://example.com",
+  "sink_probe_marker": "Example Domain",
+  "imds_metadata_path": "/latest/meta-data/",
+  "request_timeout": 5,
+  "openai_model": "gpt-5"
+}
