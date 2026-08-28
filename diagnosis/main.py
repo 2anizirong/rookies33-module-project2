@@ -15,10 +15,12 @@ from src.stage2_sink_discovery import run_sink_discovery
 from src.stage3_bypass_diagnosis import run_bypass_diagnosis
 from src.stage4_imds_exposure import run_imds_exposure, strip_raw_credentials
 from src.stage5_cloud_impact import run_cloud_impact
+from src.stage7_stored_xss import run_stored_xss_diagnosis
 
 
 def diagnose(target_url: str, method: str, callback_server: str, region: str,
-             extra_params: dict = None, skip_sink: bool = False) -> dict:
+             extra_params: dict = None, skip_sink: bool = False,
+             base_url: str = None, xss_username: str = "", xss_password: str = "") -> dict:
     extra_params = extra_params or {}
 
     print(f"[*] Stage 1: Parameter Discovery — {target_url}", file=sys.stderr)
@@ -55,12 +57,21 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     p5 = run_cloud_impact(p4, region=region)
     print(f"    overall_impact: {p5.get('overall_impact')}", file=sys.stderr)
 
+    # Stage 7
+    print(f"[*] Stage 7: Stored XSS Diagnosis", file=sys.stderr)
+    if base_url:
+        p7 = run_stored_xss_diagnosis(base_url, username=xss_username, password=xss_password)
+        print(f"    vulnerable: {p7['summary']['vulnerable_count']} / {p7['summary']['total_tested']}", file=sys.stderr)
+    else:
+        p7 = {"skipped": True, "reason": "--base-url 미지정"}
+
     pipeline_result = {
         "parameter_discovery": p1,
         "sink_discovery": p2,
         "bypass_diagnosis": p3,
         "imds_exposure": strip_raw_credentials(p4),   # ⚠ 자격증명 제거
         "cloud_impact": p5,
+        "stored_xss": p7,  # Stored XSS 진단 도구 추가
     }
 
     return {
@@ -84,6 +95,9 @@ def main():
                     help="추가 파라미터 (예: --extra level=1). 팀 서버 필터 레벨 지정.")
     ap.add_argument("--skip-sink", action="store_true",
                     help="Stage 2(Sink Discovery) 건너뜀. EC2 대상 등 콜백서버 접근 불가시 사용.")
+    ap.add_argument("--base-url", help="Stored XSS 진단을 위한 기본 URL")
+    ap.add_argument("--xss-username", default="admin", help="Stored XSS 진단을 위한 사용자 이름")
+    ap.add_argument("--xss-password", default="admin1234", help="Stored XSS 진단을 위한 비밀번호")
     args = ap.parse_args()
 
     # --extra level=1 --extra foo=bar 같은 형식 파싱
@@ -94,7 +108,8 @@ def main():
             extra_params[k.strip()] = v.strip()
 
     result = diagnose(args.target, args.method, args.callback, args.region,
-                      extra_params=extra_params, skip_sink=args.skip_sink)
+                      extra_params=extra_params, skip_sink=args.skip_sink,
+                      base_url=args.base_url, xss_username=args.xss_username, xss_password=args.xss_password)
     out = json.dumps(result, indent=2, ensure_ascii=False)
 
     if args.output:
