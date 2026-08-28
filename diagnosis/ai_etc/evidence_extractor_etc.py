@@ -11,7 +11,8 @@ ai/evidence_extractor.py(SSRF 전용)와 완전히 독립. 서로 import하지 �
     ...(parameter_discovery ~ cloud_impact는 무시, SSRF 쪽 담당)...
     "sqli_diagnosis": [ {endpoint, parameter, tests, result}, ... ],
     "stored_xss": {"injection_points": [...], "summary": {...}},
-    "os_command_injection": {"results": [...], "summary": {...}}
+    "os_command_injection": {"results": [...], "summary": {...}},
+    "login_rate_limit": {"summary": {"verdict": ...}, "configured_attempts": ..., ...}
   }
 }
  
@@ -125,6 +126,38 @@ def _normalize_cmd(raw: Any) -> list[dict[str, Any]]:
     return findings
  
  
+# ── Login Rate-Limit / Brute-force Defense (stage9) ─────────────
+#
+# stage9는 다른 stage처럼 "여러 파라미터 중 몇 개가 취약한가"를 세는 구조가 아니라,
+# /login 하나에 대해 "자동화 방어(rate limit/차단/CAPTCHA)가 있는가"를 한 번의 연속
+# 시도로 판정한다 (verdict: protected / no_automation_protection_observed / inconclusive_*).
+#
+# inconclusive_* verdict는 "안전"도 "취약"도 아닌 판정 불가 상태이므로,
+# 근거 없는 결론을 만들지 않기 위해 AI 리포트 대상에서 제외한다(finding_count=0으로 처리).
+def _normalize_login_rate_limit(raw: Any) -> list[dict[str, Any]]:
+    raw = _as_dict(raw)
+    if _is_skipped(raw):
+        return []
+
+    summary = _as_dict(raw.get("summary"))
+    verdict = summary.get("verdict")
+
+    # 결론이 난 verdict(protected / no_automation_protection_observed)만 리포트 대상으로 삼는다.
+    if verdict not in ("protected", "no_automation_protection_observed"):
+        return []
+
+    return [{
+        "endpoint": "/login",
+        "verdict": verdict,
+        "configured_attempts": raw.get("configured_attempts"),
+        "completed_attempts": raw.get("completed_attempts"),
+        "stopped_reason": raw.get("stopped_reason"),
+        "rate_limit_detected": summary.get("rate_limit_detected"),
+        "blocking_detected": summary.get("blocking_detected"),
+        "captcha_detected": summary.get("captcha_detected"),
+    }]
+
+
 def build_safe_evidence_etc(scan_result: dict[str, Any]) -> dict[str, Any]:
     stages = scan_result.get("stages", scan_result)
     stages = stages if isinstance(stages, dict) else {}
@@ -132,11 +165,15 @@ def build_safe_evidence_etc(scan_result: dict[str, Any]) -> dict[str, Any]:
     sqli_findings = _normalize_sqli(stages.get("sqli_diagnosis"))
     xss_findings = _normalize_xss(stages.get("stored_xss"))
     cmd_findings = _normalize_cmd(stages.get("os_command_injection"))
- 
+    login_limit_findings = _normalize_login_rate_limit(stages.get("login_rate_limit"))
+
     sqli_vuln = sum(1 for f in sqli_findings if f.get("result") == "vulnerable")
     xss_vuln = sum(1 for f in xss_findings if f.get("vulnerable") is True)
     cmd_vuln = sum(1 for f in cmd_findings if f.get("result") == "vulnerable")
- 
+    login_limit_vuln = sum(
+        1 for f in login_limit_findings if f.get("verdict") == "no_automation_protection_observed"
+    )
+
     return {
         "schema": "diagnosis-safe-evidence-etc-v1",
         "confirmed_summary": {
@@ -146,6 +183,8 @@ def build_safe_evidence_etc(scan_result: dict[str, Any]) -> dict[str, Any]:
             "xss_vulnerable_count": xss_vuln,
             "cmd_injection_tested_count": len(cmd_findings),
             "cmd_injection_vulnerable_count": cmd_vuln,
+            "login_rate_limit_tested_count": len(login_limit_findings),
+            "login_rate_limit_vulnerable_count": login_limit_vuln,
         },
         "sqli_diagnosis": {
             "finding_count": len(sqli_findings),
@@ -158,6 +197,10 @@ def build_safe_evidence_etc(scan_result: dict[str, Any]) -> dict[str, Any]:
         "os_command_injection": {
             "finding_count": len(cmd_findings),
             "findings": cmd_findings,
+        },
+        "login_rate_limit": {
+            "finding_count": len(login_limit_findings),
+            "findings": login_limit_findings,
         },
     }
  
