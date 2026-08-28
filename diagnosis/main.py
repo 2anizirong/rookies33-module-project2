@@ -15,11 +15,14 @@ from src.stage2_sink_discovery import run_sink_discovery
 from src.stage3_bypass_diagnosis import run_bypass_diagnosis
 from src.stage4_imds_exposure import run_imds_exposure, strip_raw_credentials
 from src.stage5_cloud_impact import run_cloud_impact
+from src.stage6_sqli_diagnosis import run_sqli_diagnosis
+from src.stage7_stored_xss import run_stored_xss_diagnosis
 from src.stage8_os_command_injection import run_os_command_injection
 
 
 def diagnose(target_url: str, method: str, callback_server: str, region: str,
-             extra_params: dict = None, skip_sink: bool = False) -> dict:
+             extra_params: dict = None, skip_sink: bool = False,
+             base_url: str = None, xss_username: str = "", xss_password: str = "") -> dict:
     extra_params = extra_params or {}
 
     print(f"[*] Stage 1: Parameter Discovery — {target_url}", file=sys.stderr)
@@ -67,12 +70,50 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
 
 
 
+    print("[*] Stage 8: OS Command Injection", file=sys.stderr)
+    p8 = run_os_command_injection(p1, extra_params=extra_params)
+    print(
+        f"    vulnerable: "
+        f"{p8['summary']['vulnerable_count']} / "
+        f"{p8['summary']['tested_parameter_count']}",
+        file=sys.stderr
+    )
+
+
+
+    # Stage 6: SQL Injection Diagnosis
+    # (Stage 7과 마찬가지로 --base-url 필요. 단일 sink 엔드포인트가 아니라
+    #  /login, /register, /post/<pid> 등 여러 엔드포인트를 대상으로 하기 때문)
+    print(f"[*] Stage 6: SQL Injection Diagnosis", file=sys.stderr)
+    if base_url:
+        try:
+            p6 = run_sqli_diagnosis(base_url)
+            vuln_cnt6 = sum(1 for r in p6 if r["result"] == "vulnerable")
+            print(f"    vulnerable: {vuln_cnt6} / {len(p6)}", file=sys.stderr)
+        except Exception as e:
+            # 대상 서버에 SQLi 후보 엔드포인트가 없는 배포 환경도 있을 수 있으니
+            # 실패해도 전체 파이프라인은 계속 진행되게 방어.
+            print(f"    [!] SQLi 진단 실패 (건너뜀): {e}", file=sys.stderr)
+            p6 = {"skipped": True, "reason": str(e)}
+    else:
+        p6 = {"skipped": True, "reason": "--base-url 미지정"}
+
+    # Stage 7
+    print(f"[*] Stage 7: Stored XSS Diagnosis", file=sys.stderr)
+    if base_url:
+        p7 = run_stored_xss_diagnosis(base_url, username=xss_username, password=xss_password)
+        print(f"    vulnerable: {p7['summary']['vulnerable_count']} / {p7['summary']['total_tested']}", file=sys.stderr)
+    else:
+        p7 = {"skipped": True, "reason": "--base-url 미지정"}
+
     pipeline_result = {
         "parameter_discovery": p1,
         "sink_discovery": p2,
         "bypass_diagnosis": p3,
         "imds_exposure": strip_raw_credentials(p4),   # 자격증명 제거
         "cloud_impact": p5,
+        "sqli_diagnosis": p6,  # SQL Injection 진단 도구 추가
+        "stored_xss": p7,  # Stored XSS 진단 도구 추가
         "os_command_injection": p8,
     }
 
@@ -97,6 +138,9 @@ def main():
                     help="추가 파라미터 (예: --extra level=1). 팀 서버 필터 레벨 지정.")
     ap.add_argument("--skip-sink", action="store_true",
                     help="Stage 2(Sink Discovery) 건너뜀. EC2 대상 등 콜백서버 접근 불가시 사용.")
+    ap.add_argument("--base-url", help="Stored XSS 진단을 위한 기본 URL")
+    ap.add_argument("--xss-username", default="admin", help="Stored XSS 진단을 위한 사용자 이름")
+    ap.add_argument("--xss-password", default="admin1234", help="Stored XSS 진단을 위한 비밀번호")
     args = ap.parse_args()
 
     # --extra level=1 --extra foo=bar 같은 형식 파싱
@@ -107,7 +151,8 @@ def main():
             extra_params[k.strip()] = v.strip()
 
     result = diagnose(args.target, args.method, args.callback, args.region,
-                      extra_params=extra_params, skip_sink=args.skip_sink)
+                      extra_params=extra_params, skip_sink=args.skip_sink,
+                      base_url=args.base_url, xss_username=args.xss_username, xss_password=args.xss_password)
     out = json.dumps(result, indent=2, ensure_ascii=False)
 
     if args.output:

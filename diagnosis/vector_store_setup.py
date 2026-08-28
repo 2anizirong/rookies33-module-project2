@@ -25,10 +25,11 @@ from openai import OpenAI
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+DIAGNOSIS_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = DIAGNOSIS_ROOT.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-GUIDES_DIR = PROJECT_ROOT / os.getenv("SECURITY_GUIDES_DIR", "guides")
+GUIDES_DIR = DIAGNOSIS_ROOT / os.getenv("SECURITY_GUIDES_DIR", "guides")
 VECTOR_STORE_NAME = os.getenv("SECURITY_GUIDE_VECTOR_STORE_NAME", "security-guides")
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".docx"}
 POLL_TIMEOUT_SECONDS = 180

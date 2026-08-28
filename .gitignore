@@ -16,6 +16,7 @@ aws_credentials*
 # Database
 *.sqlite3
 *.db
+/web/database.db
 
 # IDE
 .vscode/
@@ -23,3 +24,8 @@ aws_credentials*
 
 # OS
 .DS_Store
+
+# 결과 파일
+*.json
+!dashboard/config.json
+diagnosis/report.md

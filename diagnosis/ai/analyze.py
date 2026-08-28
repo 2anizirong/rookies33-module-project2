@@ -16,23 +16,31 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
-from ai.evidence_extractor import build_safe_evidence
+# 경로 설정
+AI_ROOT = Path(__file__).resolve().parent
+DIAGNOSIS_ROOT = AI_ROOT.parent
+PROJECT_ROOT = DIAGNOSIS_ROOT.parent
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# .env 로드
 load_dotenv(PROJECT_ROOT / ".env")
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 
+DEFAULT_MODEL = os.getenv(
+    "OPENAI_MODEL",
+    "gpt-5",
+)
+
+# AI 모듈 import 
+from evidence_extractor import build_safe_evidence
+import web_research, file_research, report_generator
 
 def analyze(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict[str, Any]:
     # OpenAI 의존 모듈은 실제 AI 실행 시점에만 불러온다.
-    from ai import file_research, report_generator, web_research
-
     evidence = build_safe_evidence(scan_result)
 
     print("[AI 0/3] Evidence Extraction")
@@ -105,8 +113,12 @@ def main() -> None:
     args = parser.parse_args()
 
     input_path = Path(args.input)
+
     if not input_path.exists():
-        parser.error(f"입력 파일을 찾을 수 없음: {input_path}")
+        input_path = DIAGNOSIS_ROOT / args.input
+
+    if not input_path.exists():
+        parser.error(f"입력 파일을 찾을 수 없음: {args.input}")
 
     try:
         scan_result = json.loads(input_path.read_text(encoding="utf-8"))
@@ -121,14 +133,21 @@ def main() -> None:
     result = analyze(scan_result=scan_result, model=args.model)
 
     output_path = Path(args.output)
+
+    if not output_path.is_absolute():
+        output_path = DIAGNOSIS_ROOT / output_path
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    report_path = Path(args.report)
 
-    from ai import report_generator
-    report_generator.save_markdown_report(result, args.report)
+    if not report_path.is_absolute():
+        report_path = DIAGNOSIS_ROOT / report_path
+
+    report_generator.save_markdown_report(result, report_path)
 
     print(f"[DONE] {output_path}")
     print(f"[DONE] {args.report}")

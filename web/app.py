@@ -14,16 +14,26 @@ import urllib.parse
 import socket
 import ipaddress
 from dotenv import load_dotenv
+import boto3
+from botocore.exceptions import ClientError
 
 load_dotenv()
 
 app = Flask(__name__)
+
+# 플라스크 키 값 
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+app.secret_key = FLASK_SECRET_KEY
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 DATABASE = os.path.join(os.path.dirname(__file__), "database.db")
+
+# 이미지 업로드를 위한 S3 설정 
+S3_BUCKET = os.getenv("S3_BUCKET_NAME")
+s3_client = boto3.client("s3", region_name=os.getenv("AWS_REGION"))
 
 
 def get_db():
@@ -143,15 +153,15 @@ def new_post():
         title = request.form.get("title", "")
         content = request.form.get("content", "")
 
-        # [취약점] SQL Injection
         conn = get_db()
         conn.execute(
-            f"INSERT INTO posts (author, title, content) "
-            f"VALUES ('{session['username']}', '{title}', '{content}')"
+            "INSERT INTO posts (author, title, content) VALUES (?, ?, ?)",
+            (session["username"], title, content)
         )
         conn.commit()
+        last_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.close()
-        return redirect(url_for("index"))
+        return redirect(url_for("view_post", pid=last_id))  # ← / 대신 게시글로
 
     return render_template("new_post.html")
 
@@ -159,9 +169,8 @@ def new_post():
 # --------------------- 게시글 보기 ---------------------
 @app.route("/post/<pid>")
 def view_post(pid):
-    # [취약점] SQL Injection
     conn = get_db()
-    post = conn.execute(f"SELECT * FROM posts WHERE id={pid}").fetchone()
+    post = conn.execute("SELECT * FROM posts WHERE id=?", (pid,)).fetchone()
     conn.close()
     if not post:
         return "게시글이 존재하지 않습니다.", 404
@@ -205,16 +214,28 @@ def upload_image():
             return "이미지 파일을 선택해주세요. <a href='/gallery/upload'>돌아가기</a>"
 
         # [취약점] 확장자/MIME 검증 없음 → 임의 파일 업로드 가능
-        # [취약점] 원본 파일명 그대로 사용 → Path Traversal 가능
-        filename = file.filename
-        save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        file.save(save_path)
+        # S3 사용해서 이미지 업로드로 변경
+        filename = file.filename        # [취약점] 원본 파일명 그대로 → Path Traversal
+        # file.save(save_path)  # 로컬 저장 제거
+
+        try:
+            s3_client.upload_fileobj(
+                file,
+                S3_BUCKET,
+                filename,
+                ExtraArgs={"ContentType": file.content_type or "application/octet-stream"}
+            )
+            s3_url = f"https://{S3_BUCKET}.s3.ap-northeast-2.amazonaws.com/{filename}"
+        except ClientError as e:
+            return f"S3 업로드 실패: {e}", 500
 
         # [취약점] SQL Injection
         conn = get_db()
         conn.execute(
             f"INSERT INTO images (uploader, filename, caption) "
-            f"VALUES ('{session['username']}', '{filename}', '{caption}')"
+            # f"VALUES ('{session['username']}', '{filename}', '{caption}')"
+            # 변경 (filename 대신 s3_url 저장)
+            f"VALUES ('{session['username']}', '{s3_url}', '{caption}')"
         )
         conn.commit()
         conn.close()
