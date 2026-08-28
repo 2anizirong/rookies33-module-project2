@@ -1,5 +1,6 @@
 """
-scan_result.json 후처리 AI 파이프라인 — SQL Injection / Stored XSS / OS Command Injection 전용.
+scan_result.json 후처리 AI 파이프라인 — SQL Injection / Stored XSS / OS Command Injection /
+Login Rate Limit 전용.
 
 ai/analyze.py(SSRF 전용)와 완전히 독립. main.py, ai/ 폴더는 전혀 건드리지 않음.
 파일 서치(file_research)는 팀 결정으로 이 파이프라인에서 제외함.
