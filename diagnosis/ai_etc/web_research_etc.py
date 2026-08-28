@@ -1,7 +1,7 @@
 """
 ai_etc 파이프라인의 Web Research 단계.
-evidence_extractor_etc.py가 만든 안전한 증거(SQLi/Stored XSS/OS Command Injection)를 바탕으로
-OpenAI Responses API의 web_search 툴을 이용해 공개 보안 자료(CWE, CVE, 공식 권고, 사례)를 조사한다.
+evidence_extractor_etc.py가 만든 안전한 증거(SQLi/Stored XSS/OS Command Injection/Login Rate Limit)를
+바탕으로 OpenAI Responses API의 web_search 툴을 이용해 공개 보안 자료(CWE, CVE, 공식 권고, 사례)를 조사한다.
 
 ai/web_research.py(SSRF 전용)와 완전히 독립. 서로 import하지 않음.
 (OpenAI 응답 파싱 헬퍼 함수들은 SSRF/그 외 취약점 공통 로직이라 구조를 그대로 가져옴)
@@ -108,7 +108,7 @@ def run(
     evidence: dict[str, Any],
     model: str = DEFAULT_MODEL,
 ) -> dict[str, Any]:
-    """안전한 진단 증거(SQLi/Stored XSS/OS Command Injection)를 바탕으로 공개 웹 보안 자료만 조사한다."""
+    """안전한 진단 증거(SQLi/Stored XSS/OS Command Injection/Login Rate Limit)를 바탕으로 공개 웹 보안 자료만 조사한다."""
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:

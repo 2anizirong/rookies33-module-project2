@@ -79,7 +79,7 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     else:
         p6 = {"skipped": True, "reason": "--base-url 미지정"}
 
-    # Stage 7
+    # Stage 7: Stored XSS Diagnosis (Stage 6과 마찬가지로 --base-url 필요)
     print(f"[*] Stage 7: Stored XSS Diagnosis", file=sys.stderr)
     if base_url:
         p7 = run_stored_xss_diagnosis(base_url, username=xss_username, password=xss_password)
@@ -87,8 +87,7 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     else:
         p7 = {"skipped": True, "reason": "--base-url 미지정"}
 
-
-    # Stage 8 : OS Command Injection
+    # Stage 8: OS Command Injection (Stage 1에서 찾은 파라미터를 그대로 재사용, --base-url 불필요)
     print("[*] Stage 8: OS Command Injection", file=sys.stderr)
     p8 = run_os_command_injection(p1, extra_params=extra_params)
     print(
@@ -127,10 +126,10 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
         "bypass_diagnosis": p3,
         "imds_exposure": strip_raw_credentials(p4),   # 자격증명 제거
         "cloud_impact": p5,
-        "sqli_diagnosis": p6,  # SQL Injection 진단 도구 추가
-        "stored_xss": p7,  # Stored XSS 진단 도구 추가
-        "os_command_injection": p8, # OS Command Injection 진단 도구 추가
-        "login_rate_limit": p9,  # 로그인 자동화 방어(Rate Limiting) 진단 도구 추가
+        "sqli_diagnosis": p6,       # Stage 6: SQL Injection
+        "stored_xss": p7,          # Stage 7: Stored XSS
+        "os_command_injection": p8, # Stage 8: OS Command Injection
+        "login_rate_limit": p9,     # Stage 9: 로그인 자동화 방어(Rate Limiting)
     }
 
     return {

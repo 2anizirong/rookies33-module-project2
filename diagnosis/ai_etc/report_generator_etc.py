@@ -1,11 +1,12 @@
 """
 ai_etc 파이프라인의 최종 리포트 생성 단계.
-evidence(SQLi/Stored XSS/OS Command Injection) + web_result를 OpenAI에 종합시켜
-"vulnerabilities" 배열(취약점 타입별 항목)을 만들고, 항목별로 markdown도 생성한다.
+evidence(SQLi/Stored XSS/OS Command Injection/Login Rate Limit) + web_result를 OpenAI에
+종합시켜 "vulnerabilities" 배열(취약점 타입별 항목)을 만들고, 항목별로 markdown도 생성한다.
 
 ai/report_generator.py(SSRF 전용, 취약점 1개 기준 스키마)와 완전히 독립.
-여기는 애초에 SQLi/XSS/CmdInjection 최대 3종류를 한 번에 다룰 수 있게
-vulnerabilities 배열 구조로 설계함 — 나중에 취약점이 더 늘어나도 스키마 변경 불필요.
+여기는 애초에 여러 취약점 유형을 한 번에 다룰 수 있게 vulnerabilities 배열 구조로 설계함
+— 실제로 login_rate_limit을 나중에 4번째 타입으로 추가할 때도 VULN_TYPES 목록만
+늘리면 됐고 스키마 자체는 그대로 재사용됨.
 
 vuln_type을 AI가 자유롭게 짓지 않고 enum으로 고정하는 이유:
 analyze_etc.py가 이 값을 파일명(report_etc_{vuln_type}.md)으로 그대로 쓰기 때문.
