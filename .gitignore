@@ -26,3 +26,4 @@ aws_credentials*
 
 # 결과 파일
 *.json
+!dashboard/config.json
