@@ -16,6 +16,7 @@ aws_credentials*
 # Database
 *.sqlite3
 *.db
+/web/database.db
 
 # IDE
 .vscode/

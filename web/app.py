@@ -159,8 +159,9 @@ def new_post():
             (session["username"], title, content)
         )
         conn.commit()
+        last_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.close()
-        return redirect(url_for("index"))
+        return redirect(url_for("view_post", pid=last_id))  # ← / 대신 게시글로
 
     return render_template("new_post.html")
 
