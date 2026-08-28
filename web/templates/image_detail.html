@@ -4,7 +4,15 @@
     <h2>{{ image['caption']|safe if image['caption'] else '(설명 없음)' }}</h2>
     <div class="meta">업로더: {{ image['uploader'] }} | 이미지 번호: {{ image['id'] }}</div>
     <hr>
-    <img class="post-img" src="/files/{{ image['filename'] }}" alt="{{ image['caption'] }}">
+
+    {% if image['filename'].startswith('https://') %}
+        <!-- S3 URL인 경우 직접 사용 -->
+        <img class="post-img" src="{{ image['filename'] }}" alt="{{ image['caption'] }}">
+    {% else %}
+        <!-- 로컬 파일인 경우 (기존 방식) -->
+        <img class="post-img" src="/files/{{ image['filename'] }}" alt="{{ image['caption'] }}">
+    {% endif %}
+
     <hr>
     <a href="/gallery">갤러리로</a>
     {% if user %}
