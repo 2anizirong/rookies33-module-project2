@@ -22,30 +22,25 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from ai.evidence_extractor import build_safe_evidence
-
+# 경로 설정
 AI_ROOT = Path(__file__).resolve().parent
 DIAGNOSIS_ROOT = AI_ROOT.parent
 PROJECT_ROOT = DIAGNOSIS_ROOT.parent
 
-# module_project2/.env
+# .env 로드
 load_dotenv(PROJECT_ROOT / ".env")
 
-# diagnosis/를 Python import 경로에 추가
-if str(DIAGNOSIS_ROOT) not in sys.path:
-    sys.path.insert(0, str(DIAGNOSIS_ROOT))
+DEFAULT_MODEL = os.getenv(
+    "OPENAI_MODEL",
+    "gpt-5",
+)
 
-DIAGNOSIS_ROOT = Path(__file__).resolve().parents[1]
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-load_dotenv(PROJECT_ROOT / ".env")
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
-
+# AI 모듈 import 
+from evidence_extractor import build_safe_evidence
+import web_research, file_research, report_generator
 
 def analyze(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict[str, Any]:
     # OpenAI 의존 모듈은 실제 AI 실행 시점에만 불러온다.
-    from ai import file_research, report_generator, web_research
-
     evidence = build_safe_evidence(scan_result)
 
     print("[AI 0/3] Evidence Extraction")
@@ -147,8 +142,6 @@ def main() -> None:
         json.dumps(result, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-
-    from ai import report_generator
     report_path = Path(args.report)
 
     if not report_path.is_absolute():
