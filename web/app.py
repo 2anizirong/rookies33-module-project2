@@ -19,6 +19,9 @@ load_dotenv()
 
 app = Flask(__name__)
 
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+app.secret_key = FLASK_SECRET_KEY
+
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
