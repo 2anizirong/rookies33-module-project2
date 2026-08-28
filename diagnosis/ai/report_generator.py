@@ -270,6 +270,8 @@ AI Risk Score 규칙(프로젝트 자체 점수이며 CVSS가 아님):
 
 보고서에서는 반드시 'confirmed_impact'와 'potential_impact'를 구분한다.
 현재 진단의 실제 체인을 먼저 설명하고, Web/File Search는 그 사실을 보강하는 자료로만 사용하라.
+
+한국어로 간결하지만 근거가 구분되도록 정리하라.
 """
 
     try:
@@ -278,11 +280,11 @@ AI Risk Score 규칙(프로젝트 자체 점수이며 CVSS가 아님):
             model=model,
             reasoning={"effort": "low"},
             instructions=(
-                "You are a cloud security intelligence analyst. "
-                "Do not perform additional searches. "
-                "The supplied diagnostic evidence is the sole source of truth about the assessed target. "
-                "Web research is external context and file research is internal guidance only. "
-                "Never invent CVEs, incidents, permissions, identifiers, or requirements."
+                "당신은 클라우드 보안 인텔리전스 분석가입니다."
+                "추가 검색을 수행하지 마십시오."
+                "제공된 진단 증거만이 평가 대상에 대한 유일한 사실의 근거입니다."
+                "웹 조사는 외부 참고 자료이며, 파일 조사는 내부 지침일 뿐입니다."
+                "CVE, 사고, 권한, 식별자 또는 요구사항을 절대로 임의로 만들어내지 마십시오."
             ),
             input=prompt,
             text={
