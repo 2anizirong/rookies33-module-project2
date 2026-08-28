@@ -29,11 +29,11 @@ DIAGNOSIS_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = DIAGNOSIS_ROOT.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-GUIDES_DIR = PROJECT_ROOT / os.getenv("SECURITY_GUIDES_DIR", "guides")
+GUIDES_DIR = DIAGNOSIS_ROOT / os.getenv("SECURITY_GUIDES_DIR", "guides")
 VECTOR_STORE_NAME = os.getenv("SECURITY_GUIDE_VECTOR_STORE_NAME", "security-guides")
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".docx"}
 POLL_TIMEOUT_SECONDS = 180
-POLL_INTERVAL_SECONDS = 3
+POLL_INTERVAL_SECONDS = 3s
 
 
 def _iter_guide_files(directory: Path) -> list[Path]:
