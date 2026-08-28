@@ -21,7 +21,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from ai.evidence_extractor import build_safe_evidence
+from .evidence_extractor import build_safe_evidence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +31,7 @@ DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 
 def analyze(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict[str, Any]:
     # OpenAI 의존 모듈은 실제 AI 실행 시점에만 불러온다.
-    from ai import file_research, report_generator, web_research
+    from . import file_research, report_generator, web_research
 
     evidence = build_safe_evidence(scan_result)
 
@@ -127,7 +127,7 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    from ai import report_generator
+    from . import report_generator
     report_generator.save_markdown_report(result, args.report)
 
     print(f"[DONE] {output_path}")
