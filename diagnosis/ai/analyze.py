@@ -24,7 +24,9 @@ from dotenv import load_dotenv
 from .evidence_extractor import build_safe_evidence
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DIAGNOSIS_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 load_dotenv(PROJECT_ROOT / ".env")
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 
@@ -105,8 +107,12 @@ def main() -> None:
     args = parser.parse_args()
 
     input_path = Path(args.input)
+
     if not input_path.exists():
-        parser.error(f"입력 파일을 찾을 수 없음: {input_path}")
+        input_path = DIAGNOSIS_ROOT / args.input
+
+    if not input_path.exists():
+        parser.error(f"입력 파일을 찾을 수 없음: {args.input}")
 
     try:
         scan_result = json.loads(input_path.read_text(encoding="utf-8"))
@@ -121,6 +127,10 @@ def main() -> None:
     result = analyze(scan_result=scan_result, model=args.model)
 
     output_path = Path(args.output)
+
+    if not output_path.is_absolute():
+        output_path = DIAGNOSIS_ROOT / output_path
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),
@@ -128,7 +138,12 @@ def main() -> None:
     )
 
     from . import report_generator
-    report_generator.save_markdown_report(result, args.report)
+    report_path = Path(args.report)
+
+    if not report_path.is_absolute():
+        report_path = DIAGNOSIS_ROOT / report_path
+
+    report_generator.save_markdown_report(result, report_path)
 
     print(f"[DONE] {output_path}")
     print(f"[DONE] {args.report}")

@@ -11,7 +11,7 @@ from openai import OpenAI
 
 
 logger = logging.getLogger(__name__)
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 
