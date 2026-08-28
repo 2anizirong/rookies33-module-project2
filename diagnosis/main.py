@@ -59,28 +59,6 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     p5 = run_cloud_impact(p4, region=region)
     print(f"    overall_impact: {p5.get('overall_impact')}", file=sys.stderr)
 
-    print("[*] Stage 8: OS Command Injection", file=sys.stderr)
-    p8 = run_os_command_injection(p1, extra_params=extra_params)
-    print(
-        f"    vulnerable: "
-        f"{p8['summary']['vulnerable_count']} / "
-        f"{p8['summary']['tested_parameter_count']}",
-        file=sys.stderr
-    )
-
-
-
-    print("[*] Stage 8: OS Command Injection", file=sys.stderr)
-    p8 = run_os_command_injection(p1, extra_params=extra_params)
-    print(
-        f"    vulnerable: "
-        f"{p8['summary']['vulnerable_count']} / "
-        f"{p8['summary']['tested_parameter_count']}",
-        file=sys.stderr
-    )
-
-
-
     # Stage 6: SQL Injection Diagnosis
     # (Stage 7과 마찬가지로 --base-url 필요. 단일 sink 엔드포인트가 아니라
     #  /login, /register, /post/<pid> 등 여러 엔드포인트를 대상으로 하기 때문)
@@ -106,6 +84,17 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     else:
         p7 = {"skipped": True, "reason": "--base-url 미지정"}
 
+
+    # Stage 8 : OS Command Injection
+    print("[*] Stage 8: OS Command Injection", file=sys.stderr)
+    p8 = run_os_command_injection(p1, extra_params=extra_params)
+    print(
+        f"    vulnerable: "
+        f"{p8['summary']['vulnerable_count']} / "
+        f"{p8['summary']['tested_parameter_count']}",
+        file=sys.stderr
+    )
+
     pipeline_result = {
         "parameter_discovery": p1,
         "sink_discovery": p2,
@@ -114,7 +103,7 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
         "cloud_impact": p5,
         "sqli_diagnosis": p6,  # SQL Injection 진단 도구 추가
         "stored_xss": p7,  # Stored XSS 진단 도구 추가
-        "os_command_injection": p8,
+        "os_command_injection": p8, # OS Command Injection 진단 도구 추가
     }
 
     return {
