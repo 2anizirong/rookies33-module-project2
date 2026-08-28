@@ -17,6 +17,7 @@ from src.stage4_imds_exposure import run_imds_exposure, strip_raw_credentials
 from src.stage5_cloud_impact import run_cloud_impact
 from src.stage6_sqli_diagnosis import run_sqli_diagnosis
 from src.stage7_stored_xss import run_stored_xss_diagnosis
+from src.stage8_os_command_injection import run_os_command_injection
 
 
 def diagnose(target_url: str, method: str, callback_server: str, region: str,
@@ -83,14 +84,26 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     else:
         p7 = {"skipped": True, "reason": "--base-url 미지정"}
 
+
+    # Stage 8 : OS Command Injection
+    print("[*] Stage 8: OS Command Injection", file=sys.stderr)
+    p8 = run_os_command_injection(p1, extra_params=extra_params)
+    print(
+        f"    vulnerable: "
+        f"{p8['summary']['vulnerable_count']} / "
+        f"{p8['summary']['tested_parameter_count']}",
+        file=sys.stderr
+    )
+
     pipeline_result = {
         "parameter_discovery": p1,
         "sink_discovery": p2,
         "bypass_diagnosis": p3,
-        "imds_exposure": strip_raw_credentials(p4),   # ⚠ 자격증명 제거
+        "imds_exposure": strip_raw_credentials(p4),   # 자격증명 제거
         "cloud_impact": p5,
         "sqli_diagnosis": p6,  # SQL Injection 진단 도구 추가
         "stored_xss": p7,  # Stored XSS 진단 도구 추가
+        "os_command_injection": p8, # OS Command Injection 진단 도구 추가
     }
 
     return {
