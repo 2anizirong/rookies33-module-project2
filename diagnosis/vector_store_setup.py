@@ -25,7 +25,7 @@ from openai import OpenAI
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 GUIDES_DIR = PROJECT_ROOT / os.getenv("SECURITY_GUIDES_DIR", "guides")
