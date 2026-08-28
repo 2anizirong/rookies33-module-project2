@@ -16,13 +16,24 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
-from .evidence_extractor import build_safe_evidence
+from ai.evidence_extractor import build_safe_evidence
 
+AI_ROOT = Path(__file__).resolve().parent
+DIAGNOSIS_ROOT = AI_ROOT.parent
+PROJECT_ROOT = DIAGNOSIS_ROOT.parent
+
+# module_project2/.env
+load_dotenv(PROJECT_ROOT / ".env")
+
+# diagnosis/를 Python import 경로에 추가
+if str(DIAGNOSIS_ROOT) not in sys.path:
+    sys.path.insert(0, str(DIAGNOSIS_ROOT))
 
 DIAGNOSIS_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +44,7 @@ DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 
 def analyze(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict[str, Any]:
     # OpenAI 의존 모듈은 실제 AI 실행 시점에만 불러온다.
-    from . import file_research, report_generator, web_research
+    from ai import file_research, report_generator, web_research
 
     evidence = build_safe_evidence(scan_result)
 
@@ -137,7 +148,7 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    from . import report_generator
+    from ai import report_generator
     report_path = Path(args.report)
 
     if not report_path.is_absolute():
