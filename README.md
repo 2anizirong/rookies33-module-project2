@@ -68,7 +68,10 @@ python web/app.py
 # 2. 진단 도구 실행 (대상 웹 서버로 정상/악성 요청 전송)
 python main.py <http://target_ip/endpoint> -o scan_result.json
 
-# 3. AI 위험도 판단
+# 3. file search 업로드 
+python vector_store_setup.py --init
+
+# 4. AI 위험도 판단
 python -m ai.analyze --input scan_result.json 
 
 streamlit run dashboard/app.py    # 4. 대시보드 실행
