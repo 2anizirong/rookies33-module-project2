@@ -33,7 +33,7 @@ GUIDES_DIR = DIAGNOSIS_ROOT / os.getenv("SECURITY_GUIDES_DIR", "guides")
 VECTOR_STORE_NAME = os.getenv("SECURITY_GUIDE_VECTOR_STORE_NAME", "security-guides")
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".docx"}
 POLL_TIMEOUT_SECONDS = 180
-POLL_INTERVAL_SECONDS = 3s
+POLL_INTERVAL_SECONDS = 3
 
 
 def _iter_guide_files(directory: Path) -> list[Path]:
