@@ -153,11 +153,10 @@ def new_post():
         title = request.form.get("title", "")
         content = request.form.get("content", "")
 
-        # [취약점] SQL Injection
         conn = get_db()
         conn.execute(
-            f"INSERT INTO posts (author, title, content) "
-            f"VALUES ('{session['username']}', '{title}', '{content}')"
+            "INSERT INTO posts (author, title, content) VALUES (?, ?, ?)",
+            (session["username"], title, content)
         )
         conn.commit()
         conn.close()
