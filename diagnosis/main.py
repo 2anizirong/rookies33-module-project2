@@ -15,6 +15,7 @@ from src.stage2_sink_discovery import run_sink_discovery
 from src.stage3_bypass_diagnosis import run_bypass_diagnosis
 from src.stage4_imds_exposure import run_imds_exposure, strip_raw_credentials
 from src.stage5_cloud_impact import run_cloud_impact
+from src.stage6_sqli_diagnosis import run_sqli_diagnosis
 from src.stage7_stored_xss import run_stored_xss_diagnosis
 
 
@@ -57,6 +58,23 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     p5 = run_cloud_impact(p4, region=region)
     print(f"    overall_impact: {p5.get('overall_impact')}", file=sys.stderr)
 
+    # Stage 6: SQL Injection Diagnosis
+    # (Stage 7과 마찬가지로 --base-url 필요. 단일 sink 엔드포인트가 아니라
+    #  /login, /register, /post/<pid> 등 여러 엔드포인트를 대상으로 하기 때문)
+    print(f"[*] Stage 6: SQL Injection Diagnosis", file=sys.stderr)
+    if base_url:
+        try:
+            p6 = run_sqli_diagnosis(base_url)
+            vuln_cnt6 = sum(1 for r in p6 if r["result"] == "vulnerable")
+            print(f"    vulnerable: {vuln_cnt6} / {len(p6)}", file=sys.stderr)
+        except Exception as e:
+            # 대상 서버에 SQLi 후보 엔드포인트가 없는 배포 환경도 있을 수 있으니
+            # 실패해도 전체 파이프라인은 계속 진행되게 방어.
+            print(f"    [!] SQLi 진단 실패 (건너뜀): {e}", file=sys.stderr)
+            p6 = {"skipped": True, "reason": str(e)}
+    else:
+        p6 = {"skipped": True, "reason": "--base-url 미지정"}
+
     # Stage 7
     print(f"[*] Stage 7: Stored XSS Diagnosis", file=sys.stderr)
     if base_url:
@@ -71,6 +89,7 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
         "bypass_diagnosis": p3,
         "imds_exposure": strip_raw_credentials(p4),   # ⚠ 자격증명 제거
         "cloud_impact": p5,
+        "sqli_diagnosis": p6,  # SQL Injection 진단 도구 추가
         "stored_xss": p7,  # Stored XSS 진단 도구 추가
     }
 
