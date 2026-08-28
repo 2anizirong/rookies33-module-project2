@@ -72,7 +72,7 @@ python main.py <http://target_ip/endpoint> -o scan_result.json
 python vector_store_setup.py --init
 
 # 4. AI 위험도 판단
-python -m ai.analyze --input scan_result.json 
+python ../diagnosis/ai/analyze.py --input scan_result.json 
 
 streamlit run dashboard/app.py    # 4. 대시보드 실행
 ```
