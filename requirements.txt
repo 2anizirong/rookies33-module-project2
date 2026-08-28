@@ -1,12 +1,12 @@
 # 웹 서비스 (web/app.py)
-flask>=3.0.0
-requests>=2.31.0
+flask>=3.0
+requests>=2.31
 
 # AWS 연동 (aws/cloud.py)
-boto3>=1.34.0
+boto3>=1.34
 
 # AI 판단 (ai_judge.py)
-openai>=1.30.0
+openai>=1.30
 
 # 대시보드 (dashboard/app.py)
 streamlit>=1.35.0
