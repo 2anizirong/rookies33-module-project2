@@ -54,7 +54,7 @@ rookies33-module-project2/
 | 파트 | 담당자 | 담당 파일 |
 |---|---|---|
 | 웹/AWS 구축 | 김민성, 김상현, 김이안 | `web/app.py`, `aws/cloud.py`, `infra/` |
-| 진단 도구 | 김태회, 안준엽, 조윤호 | `diagnosis/bypass.py`, `diagnosis/scanner.py` |
+| 진단 도구 | 김태회, 안준엽, 조윤호 | `diagnosis/main.py`, `diagnosis/src/*`, `diagnosis/ai/*` |
 | 대시보드 | (팀 협의 후 배정) | `dashboard/app.py` |
 
 ## ⭐⭐⭐ 실행 방법
@@ -66,10 +66,13 @@ cp .env.example .env      # OPENAI_API_KEY 입력
 python web/app.py
 
 # 2. 진단 도구 실행 (대상 웹 서버로 정상/악성 요청 전송)
-python diagnosis/scanner.py --target http://localhost:5000
+python main.py <http://target_ip/endpoint> -o scan_result.json
 
-# 3. AI 위험도 판단
-python ai_judge.py --log diagnosis/last_result.json
+# 3. file search 업로드 
+python vector_store_setup.py --init
+
+# 4. AI 위험도 판단
+python -m ai.analyze --input scan_result.json 
 
 streamlit run dashboard/app.py    # 4. 대시보드 실행
 ```

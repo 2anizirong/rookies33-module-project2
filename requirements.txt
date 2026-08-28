@@ -11,4 +11,8 @@ openai>=1.30
 # 대시보드 (dashboard/app.py)
 streamlit>=1.35.0
 
+# parameter discovery (Arjun tool)
 arjun>=2.2.7
+
+# dotenv 
+python-dotenv>=1.0.0

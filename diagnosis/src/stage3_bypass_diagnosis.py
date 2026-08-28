@@ -13,7 +13,7 @@ Stage 3: SSRF Bypass Diagnosis (v2)
   예: extra_params={"level": "1"} → /fetch?url=...&level=1
 """
 import requests
-from payloads import BYPASS_TECHNIQUES, build_url, DEFAULT_IMDS_IP
+from src.payloads import BYPASS_TECHNIQUES, build_url, DEFAULT_IMDS_IP
 
 
 # 1순위: IMDS 응답 도달 시그니처 (AWS 실환경에서만 나옴)

@@ -10,24 +10,34 @@ import json
 import sys
 from datetime import datetime
 
-from stage1_parameter_discovery import run_parameter_discovery
-from stage2_sink_discovery import run_sink_discovery
-from stage3_bypass_diagnosis import run_bypass_diagnosis
-from stage4_imds_exposure import run_imds_exposure, strip_raw_credentials
-from stage5_cloud_impact import run_cloud_impact
-from stage6_ai_analysis import run_ai_analysis
+from src.stage1_parameter_discovery import run_parameter_discovery
+from src.stage2_sink_discovery import run_sink_discovery
+from src.stage3_bypass_diagnosis import run_bypass_diagnosis
+from src.stage4_imds_exposure import run_imds_exposure, strip_raw_credentials
+from src.stage5_cloud_impact import run_cloud_impact
 
 
 def diagnose(target_url: str, method: str, callback_server: str, region: str,
-             extra_params: dict = None) -> dict:
+             extra_params: dict = None, skip_sink: bool = False) -> dict:
     extra_params = extra_params or {}
 
     print(f"[*] Stage 1: Parameter Discovery — {target_url}", file=sys.stderr)
     p1 = run_parameter_discovery(target_url, method=method)
     print(f"    발견된 파라미터: {len(p1.get('parameters', []))}개", file=sys.stderr)
 
-    print(f"[*] Stage 2: Sink Discovery — callback={callback_server}", file=sys.stderr)
-    p2 = run_sink_discovery(p1, callback_server=callback_server)
+    if skip_sink:
+        print(f"[*] Stage 2: Sink Discovery — SKIPPED (모든 파라미터를 candidate로 간주)",
+              file=sys.stderr)
+        p2 = {
+            "target": p1["target"],
+            "ssrf_candidates": [
+                {**p, "server_request_detected": None}
+                for p in p1.get("parameters", [])
+            ],
+        }
+    else:
+        print(f"[*] Stage 2: Sink Discovery — callback={callback_server}", file=sys.stderr)
+        p2 = run_sink_discovery(p1, callback_server=callback_server)
     print(f"    SSRF candidates: {len(p2.get('ssrf_candidates', []))}개", file=sys.stderr)
 
     print(f"[*] Stage 3: Bypass Diagnosis (extra={extra_params})", file=sys.stderr)
@@ -45,7 +55,6 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     p5 = run_cloud_impact(p4, region=region)
     print(f"    overall_impact: {p5.get('overall_impact')}", file=sys.stderr)
 
-    print(f"[*] Stage 6: AI Risk Analysis", file=sys.stderr)
     pipeline_result = {
         "parameter_discovery": p1,
         "sink_discovery": p2,
@@ -53,8 +62,6 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
         "imds_exposure": strip_raw_credentials(p4),   # ⚠ 자격증명 제거
         "cloud_impact": p5,
     }
-    p6 = run_ai_analysis(pipeline_result)
-    print(f"    severity: {p6['risk']['severity']} ({p6['risk']['score']})", file=sys.stderr)
 
     return {
         "meta": {
@@ -62,7 +69,6 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
             "timestamp": datetime.utcnow().isoformat() + "Z",
         },
         "stages": pipeline_result,
-        "verdict": p6,
     }
 
 
@@ -76,6 +82,8 @@ def main():
     ap.add_argument("--output", "-o", help="결과 JSON 저장 경로 (미지정시 stdout)")
     ap.add_argument("--extra", action="append", default=[],
                     help="추가 파라미터 (예: --extra level=1). 팀 서버 필터 레벨 지정.")
+    ap.add_argument("--skip-sink", action="store_true",
+                    help="Stage 2(Sink Discovery) 건너뜀. EC2 대상 등 콜백서버 접근 불가시 사용.")
     args = ap.parse_args()
 
     # --extra level=1 --extra foo=bar 같은 형식 파싱
@@ -86,7 +94,7 @@ def main():
             extra_params[k.strip()] = v.strip()
 
     result = diagnose(args.target, args.method, args.callback, args.region,
-                      extra_params=extra_params)
+                      extra_params=extra_params, skip_sink=args.skip_sink)
     out = json.dumps(result, indent=2, ensure_ascii=False)
 
     if args.output:

