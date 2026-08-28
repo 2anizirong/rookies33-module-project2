@@ -23,3 +23,6 @@ aws_credentials*
 
 # OS
 .DS_Store
+
+# 결과 파일
+*.json
