@@ -169,9 +169,8 @@ def new_post():
 # --------------------- 게시글 보기 ---------------------
 @app.route("/post/<pid>")
 def view_post(pid):
-    # [취약점] SQL Injection
     conn = get_db()
-    post = conn.execute(f"SELECT * FROM posts WHERE id={pid}").fetchone()
+    post = conn.execute("SELECT * FROM posts WHERE id=?", (pid,)).fetchone()
     conn.close()
     if not post:
         return "게시글이 존재하지 않습니다.", 404
