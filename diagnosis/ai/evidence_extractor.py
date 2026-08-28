@@ -97,9 +97,7 @@ def build_safe_evidence(scan_result: dict[str, Any]) -> dict[str, Any]:
         or stages.get("cloud_impact_assessment")
     )
 
-    # ---------------------------------------------------------
     # Stage 1: Parameter Discovery
-    # ---------------------------------------------------------
     parameters: list[dict[str, Any]] = []
     for item in _as_list(parameter_result.get("parameters", [])):
         if not isinstance(item, dict):
@@ -112,9 +110,7 @@ def build_safe_evidence(scan_result: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    # ---------------------------------------------------------
     # Stage 2: Sink Discovery
-    # ---------------------------------------------------------
     candidates: list[dict[str, Any]] = []
     for item in _as_list(sink_result.get("ssrf_candidates", [])):
         if not isinstance(item, dict):
@@ -128,10 +124,8 @@ def build_safe_evidence(scan_result: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    # ---------------------------------------------------------
     # Stage 3: Bypass / IMDS Diagnosis
     # body_snippet은 절대 AI에 전달하지 않는다.
-    # ---------------------------------------------------------
     bypasses: list[dict[str, Any]] = []
     for item in bypass_results:
         tests: list[dict[str, Any]] = []
@@ -167,10 +161,8 @@ def build_safe_evidence(scan_result: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    # ---------------------------------------------------------
     # Stage 4: IMDS / Credential Exposure
     # 이름 및 Credential 값은 제외하고 boolean 사실만 전달한다.
-    # ---------------------------------------------------------
     imds_assessments: list[dict[str, Any]] = []
     for item in imds_results:
         imds = _as_dict(item.get("imds"))
@@ -188,10 +180,8 @@ def build_safe_evidence(scan_result: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    # ---------------------------------------------------------
     # Stage 5: Cloud Impact
     # resource/principal의 실제 이름은 제외한다.
-    # ---------------------------------------------------------
     cloud_services: list[dict[str, Any]] = []
     for item in _as_list(cloud_result.get("cloud_impact", [])):
         if not isinstance(item, dict):
@@ -213,10 +203,8 @@ def build_safe_evidence(scan_result: dict[str, Any]) -> dict[str, Any]:
 
     principal = _as_dict(cloud_result.get("principal"))
 
-    # ---------------------------------------------------------
     # AI가 검색/종합 단계에서 기본 사실을 헷갈리지 않도록
     # 핵심 chain 상태를 코드에서 명시적으로 계산한다.
-    # ---------------------------------------------------------
     vulnerable_count = sum(
         1 for item in bypasses if item.get("result") == "vulnerable"
     )

@@ -15,6 +15,7 @@ from src.stage2_sink_discovery import run_sink_discovery
 from src.stage3_bypass_diagnosis import run_bypass_diagnosis
 from src.stage4_imds_exposure import run_imds_exposure, strip_raw_credentials
 from src.stage5_cloud_impact import run_cloud_impact
+from src.stage8_os_command_injection import run_os_command_injection
 
 
 def diagnose(target_url: str, method: str, callback_server: str, region: str,
@@ -55,12 +56,24 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     p5 = run_cloud_impact(p4, region=region)
     print(f"    overall_impact: {p5.get('overall_impact')}", file=sys.stderr)
 
+    print("[*] Stage 8: OS Command Injection", file=sys.stderr)
+    p8 = run_os_command_injection(p1, extra_params=extra_params)
+    print(
+        f"    vulnerable: "
+        f"{p8['summary']['vulnerable_count']} / "
+        f"{p8['summary']['tested_parameter_count']}",
+        file=sys.stderr
+    )
+
+
+
     pipeline_result = {
         "parameter_discovery": p1,
         "sink_discovery": p2,
         "bypass_diagnosis": p3,
-        "imds_exposure": strip_raw_credentials(p4),   # ⚠ 자격증명 제거
+        "imds_exposure": strip_raw_credentials(p4),   # 자격증명 제거
         "cloud_impact": p5,
+        "os_command_injection": p8,
     }
 
     return {
