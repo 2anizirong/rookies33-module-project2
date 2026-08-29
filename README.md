@@ -110,7 +110,7 @@ rookies33-module-project2/
 |---|---|---|
 | 웹/AWS 구축 | 김민성, 김상현, 김이안 | `web/`, AWS EC2/IAM/S3/Lambda |
 | SSRF 진단 도구 | 김태회, 안준엽, 조윤호 | `diagnosis/src/`, `diagnosis/ai/` |
-| 추가 진단 도구 | 김상현, 김이안, 김태회 | `diagnosis/ai_etc` |
+| 추가 진단 도구 | 김상현, 김이안, 김태회, 안준엽 | `diagnosis/ai_etc` |
 | 대시보드 | 김민성 | `dashboard/` 
 
 
