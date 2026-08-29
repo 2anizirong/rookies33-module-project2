@@ -25,28 +25,36 @@ from urllib.parse import urlparse
 import requests
 
 
-# 로그인 성공으로 오해할 수 있는 응답이 나오면 계정 보호를 위해 즉시 중단한다.
+# ── 탐지 시그니처 ────────────────────────────────────────────────
+
+# 안전장치: 로그인 성공 가능성 노출 시 즉시 진단 중단
 SUCCESS_PATTERNS = (
     r"(?i)logout|sign\s*out|my\s*page|dashboard|welcome",
     r"로그아웃|마이페이지|환영합니다",
 )
 
-# 제품마다 차단 문구가 다르므로 한국어와 영어의 대표적인 신호만 탐지한다.
+# 1순위: HTTP 429 또는 Retry-After 헤더 (속도 제한 방어 확정)
+
+# 2순위: 계정/IP 잠금 및 요청 차단 문구 (차단 기반 방어 확인)
 BLOCK_PATTERNS = (
     r"(?i)too many (?:requests|attempts)|rate.?limit|try again later",
     r"(?i)account (?:is )?(?:locked|blocked)|temporarily (?:locked|blocked)",
     r"시도 횟수|요청이 너무 많|잠시 후 다시|계정.*(?:잠금|차단)|접근.*차단",
 )
 
+# 3순위: CAPTCHA 문구 또는 공급자 식별자 (자동화 방어 확인)
 CAPTCHA_PATTERNS = (
     r"(?i)captcha|recaptcha|hcaptcha|cf-turnstile",
     r"자동입력 방지|보안문자|로봇이 아닙니다",
 )
 
-# CLI에서 --username을 생략했을 때 사용할 비실사용 테스트 계정명이다.
-# 실제 admin/guest 계정을 기본값으로 사용하면 계정 잠금 정책을 유발할 수 있다.
+# ── 안전한 테스트 기본값 ─────────────────────────────────────────
+
+# 실제 계정의 잠금 정책을 유발하지 않도록 비실사용 계정명을 기본값으로 사용
 DEFAULT_TEST_USERNAME = "stage9-test-user"
 
+
+# ── 대상 URL 정규화 ──────────────────────────────────────────────
 
 def _resolve_login_url(url: str, login_path: str = "/login") -> str:
     """사이트 URL을 검증하고 실제 로그인 POST URL로 변환한다.
@@ -78,6 +86,8 @@ def _response_fingerprint(body: str) -> str:
     return hashlib.sha256(body.encode("utf-8", errors="replace")).hexdigest()[:12]
 
 
+# ── 로그인 자동화 방어 진단 ──────────────────────────────────────
+
 def diagnose_login_limit(
     target_url: str,
     username: str,
@@ -99,7 +109,8 @@ def diagnose_login_limit(
 
     for number in range(1, attempts + 1):
         try:
-            # 리다이렉트를 끄면 성공 시 다른 페이지로 이동하는 3xx 응답을 구분할 수 있다.
+            # 1단계: 로그인 실패 요청 전송
+            # 리다이렉트를 비활성화해 로그인 성공을 나타내는 3xx 응답까지 직접 확인
             response = session.post(
                 url,
                 data={username_field: username, password_field: password},
@@ -108,10 +119,11 @@ def diagnose_login_limit(
             )
             body = response.text[:65536]
 
-            # 일부 취약한 로그인 페이지는 입력값을 오류 메시지에 그대로 반사한다.
-            # 계정명에 'rate-limit' 같은 단어가 있어도 방어 신호로 오인하지 않도록 제거한다.
+            # 2단계: 반사된 입력값 제거
+            # 테스트 계정명의 'rate-limit' 문구가 탐지 신호로 오인되는 것을 방지
             inspection_body = body.replace(username, "").replace(password, "")
 
+            # 3단계: 속도 제한, 차단, CAPTCHA 탐지
             retry_after = response.headers.get("Retry-After")
             captcha_detected = _matches_any(inspection_body, CAPTCHA_PATTERNS)
             block_detected = response.status_code in {403, 423, 429} or _matches_any(
@@ -119,6 +131,9 @@ def diagnose_login_limit(
             )
 
             location = response.headers.get("Location")
+
+            # 4단계: 로그인 성공 가능성 탐지
+            # 로그인 성공이 의심되면 계정 보호를 위해 후속 요청을 즉시 중단
             possible_success = (
                 response.status_code in {301, 302, 303, 307, 308}
                 and bool(location)
@@ -136,7 +151,9 @@ def diagnose_login_limit(
                 "response_fingerprint": _response_fingerprint(inspection_body),
             })
 
-            # 로그인 성공 가능성, CAPTCHA 또는 차단이 확인되면 추가 요청을 보내지 않는다.
+            # ── 즉시 중단 조건 ────────────────────────────────────
+
+            # 로그인 성공, 속도 제한, 차단, CAPTCHA 중 하나라도 확인되면 진단 중단
             if possible_success:
                 stopped_reason = "possible_login_success"
                 break
@@ -162,6 +179,8 @@ def diagnose_login_limit(
         if number < attempts and interval > 0:
             time.sleep(interval)
 
+    # ── 탐지 결과 집계 ────────────────────────────────────────────
+
     rate_limit_detected = any(
         item.get("status_code") == 429 or bool(item.get("retry_after")) for item in results
     )
@@ -179,7 +198,7 @@ def diagnose_login_limit(
     elif protection_detected:
         verdict = "protected"
     elif len(results) == attempts:
-        # 10회에서 방어가 안 보였다는 의미이며, 비밀번호 추측 성공을 의미하지는 않는다.
+        # 설정 횟수 내 방어 신호가 관찰되지 않았다는 뜻이며 공격 성공을 의미하지 않음
         verdict = "no_automation_protection_observed"
     else:
         verdict = "inconclusive"
@@ -206,6 +225,8 @@ def diagnose_login_limit(
         "stages": {"stage9_login_limit": stage_result},
     }
 
+
+# ── CLI 실행 및 결과 저장 ─────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)

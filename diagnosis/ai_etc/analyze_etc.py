@@ -58,7 +58,8 @@ def analyze_etc(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict
         "         "
         f"sqli_vulnerable={summary.get('sqli_vulnerable_count', 0)}/{summary.get('sqli_endpoint_count', 0)}, "
         f"xss_vulnerable={summary.get('xss_vulnerable_count', 0)}/{summary.get('xss_tested_count', 0)}, "
-        f"cmd_vulnerable={summary.get('cmd_injection_vulnerable_count', 0)}/{summary.get('cmd_injection_tested_count', 0)}",
+        f"cmd_vulnerable={summary.get('cmd_injection_vulnerable_count', 0)}/{summary.get('cmd_injection_tested_count', 0)}, "
+        f"login_limit_tested={summary.get('login_limit_tested', False)}",
         file=sys.stderr,
     )
 

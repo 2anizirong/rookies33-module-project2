@@ -164,8 +164,11 @@ def build_safe_evidence_etc(scan_result: dict[str, Any]) -> dict[str, Any]:
     sqli_findings = _normalize_sqli(stages.get("sqli_diagnosis"))
     xss_findings = _normalize_xss(stages.get("stored_xss"))
     cmd_findings = _normalize_cmd(stages.get("os_command_injection"))
-    login_limit_findings = _normalize_login_rate_limit(stages.get("login_rate_limit"))
-
+    # main.py 통합 결과(login_limit)와 Stage 9 단독 결과(stage9_login_limit)를 모두 지원한다.
+    login_finding = _normalize_login_limit(
+        stages.get("login_limit") or stages.get("stage9_login_limit")
+    )
+ 
     sqli_vuln = sum(1 for f in sqli_findings if f.get("result") == "vulnerable")
     xss_vuln = sum(1 for f in xss_findings if f.get("vulnerable") is True)
     cmd_vuln = sum(1 for f in cmd_findings if f.get("result") == "vulnerable")

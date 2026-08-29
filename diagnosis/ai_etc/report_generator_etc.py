@@ -199,11 +199,72 @@ REPORT_SCHEMA_ETC: dict[str, Any] = {
 }
 
 
-def _fallback_report_etc(reason: str) -> dict[str, Any]:
+def _fallback_report_etc(
+    reason: str,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """AI 호출 실패 시 Stage 9 Evidence로 규칙 기반 보고서를 만든다."""
+    evidence = evidence or {}
+    login = evidence.get("login_limit", {}) or {}
+    summary = evidence.get("confirmed_summary", {}) or {}
+    if not summary.get("login_limit_tested"):
+        return {"status": "error", "vulnerabilities": [], "error": reason}
+
+    protected = login.get("verdict") == "protected"
+    completed = login.get("completed_attempts", 0)
+    configured = login.get("configured_attempts", 0)
+    observed = (
+        "반복 로그인 과정에서 속도 제한 또는 자동화 방어 신호가 관찰됨"
+        if protected
+        else f"{completed}/{configured}회 요청 동안 429, 차단, CAPTCHA가 관찰되지 않음"
+    )
     return {
-        "status": "error",
-        "vulnerabilities": [],
-        "error": reason,
+        "status": "completed",
+        "fallback_reason": reason,
+        "vulnerabilities": [{
+            "vuln_type": "login_limit",
+            "verdict": "safe" if protected else "vulnerable",
+            "risk": {
+                "severity": "low" if protected else "medium",
+                "score": 1.0 if protected else 5.5,
+                "reason": observed,
+            },
+            "vulnerability_classification": {
+                "name": "Improper Restriction of Excessive Authentication Attempts",
+                "cwe": "CWE-307",
+                "description": "반복 인증 시도에 대한 속도 제한·차단 등 자동화 방어를 점검한다.",
+                "attack_chain": [
+                    "동일 테스트 계정에 잘못된 비밀번호 반복 제출",
+                    "HTTP 상태·Retry-After·차단·CAPTCHA 신호 확인",
+                    "자동화 방어 관찰 여부 판정",
+                ],
+            },
+            "diagnostic_evidence": [
+                {"evidence": observed, "security_meaning": "온라인 비밀번호 추측 방어 관찰 결과"},
+                {
+                    "evidence": f"최종 판정: {login.get('verdict', 'inconclusive')}",
+                    "security_meaning": "제한된 진단 결과이며 계정 침해 성공을 의미하지 않음",
+                },
+            ],
+            "related_cves": [],
+            "cve_assessment": {
+                "direct_match_found": False,
+                "explanation": "자체 실습 웹의 설정 진단으로 직접 대응 제품 CVE는 확인하지 않음",
+            },
+            "real_world_cases": [],
+            "official_guidance": [],
+            "analysis": {
+                "attack_scenario": "공격자가 로그인 엔드포인트에 자동화된 인증 요청을 반복한다.",
+                "confirmed_impact": observed,
+                "potential_impact": "반복이 제한되지 않으면 약한 비밀번호 계정의 탈취 위험이 증가한다.",
+                "limitations": "장기 누적 제한, 분산 IP 방어 및 WAF 동적 정책은 제한된 요청으로 확정할 수 없다.",
+            },
+            "recommendations": [
+                {"priority": "high", "action": "계정·IP 조합 기반 로그인 속도 제한 적용", "reason": "반복 인증 요청 제한"},
+                {"priority": "high", "action": "MFA 및 위험 기반 추가 인증 적용", "reason": "계정 탈취 위험 완화"},
+                {"priority": "medium", "action": "로그인 실패 로깅과 경보 구성", "reason": "자동화 공격 조기 탐지"},
+            ],
+        }],
     }
 
 
@@ -216,7 +277,7 @@ def generate_etc(
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return _fallback_report_etc("OPENAI_API_KEY를 찾을 수 없음")
+        return _fallback_report_etc("OPENAI_API_KEY를 찾을 수 없음", evidence)
 
     summary = evidence.get("confirmed_summary", {})
 
@@ -323,20 +384,20 @@ Risk Score 규칙(프로젝트 자체 점수이며 CVSS가 아님):
                 if response.incomplete_details
                 else None
             )
-            return _fallback_report_etc(f"OpenAI 응답 미완료: {reason}")
+            return _fallback_report_etc(f"OpenAI 응답 미완료: {reason}", evidence)
 
         text = (response.output_text or "").strip()
         if not text:
-            return _fallback_report_etc("최종 AI 분석 응답이 비어 있음")
+            return _fallback_report_etc("최종 AI 분석 응답이 비어 있음", evidence)
 
         parsed = json.loads(text)
         return parsed
 
     except json.JSONDecodeError:
-        return _fallback_report_etc("최종 AI 분석 결과 JSON 파싱 실패")
+        return _fallback_report_etc("최종 AI 분석 결과 JSON 파싱 실패", evidence)
     except Exception as exc:
         logger.exception("최종 보고서 생성(etc) 실패")
-        return _fallback_report_etc(f"{type(exc).__name__}: {str(exc)[:300]}")
+        return _fallback_report_etc(f"{type(exc).__name__}: {str(exc)[:300]}", evidence)
 
 
 VULN_TYPE_LABEL = {
