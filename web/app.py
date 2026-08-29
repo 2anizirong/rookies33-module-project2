@@ -21,7 +21,7 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# 플라스크 키 값 
+# 플라스크 세션 서명에 쓰이는 시크릿 키
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
 app.secret_key = FLASK_SECRET_KEY
 
@@ -31,7 +31,7 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 DATABASE = os.path.join(os.path.dirname(__file__), "database.db")
 
-# 이미지 업로드를 위한 S3 설정 
+# 이미지 업로드용 S3 버킷 설정
 S3_BUCKET = os.getenv("S3_BUCKET_NAME")
 s3_client = boto3.client("s3", region_name=os.getenv("AWS_REGION"))
 
@@ -96,7 +96,6 @@ def login():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
 
-        # [취약점] SQL Injection
         conn = get_db()
         query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
         try:
@@ -121,7 +120,6 @@ def register():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
 
-        # [취약점] 평문 저장 + SQL Injection
         conn = get_db()
         try:
             conn.execute(
@@ -161,7 +159,8 @@ def new_post():
         conn.commit()
         last_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.close()
-        return redirect(url_for("view_post", pid=last_id))  # ← / 대신 게시글로
+        # 홈이 아니라 방금 작성한 게시글 상세 페이지로 이동
+        return redirect(url_for("view_post", pid=last_id))
 
     return render_template("new_post.html")
 
@@ -174,14 +173,12 @@ def view_post(pid):
     conn.close()
     if not post:
         return "게시글이 존재하지 않습니다.", 404
-    # [취약점] Stored XSS
     return render_template("post.html", post=post, user=session.get("username"))
 
 
 # --------------------- 게시글 삭제 ---------------------
 @app.route("/post/delete/<int:pid>")
 def delete_post(pid):
-    # [취약점] IDOR + CSRF
     if "username" not in session:
         return redirect(url_for("login"))
     conn = get_db()
@@ -213,10 +210,8 @@ def upload_image():
         if not file or not file.filename:
             return "이미지 파일을 선택해주세요. <a href='/gallery/upload'>돌아가기</a>"
 
-        # [취약점] 확장자/MIME 검증 없음 → 임의 파일 업로드 가능
-        # S3 사용해서 이미지 업로드로 변경
-        filename = file.filename        # [취약점] 원본 파일명 그대로 → Path Traversal
-        # file.save(save_path)  # 로컬 저장 제거
+        # 확장자/MIME 타입 검증 없이 업로드된 파일명을 그대로 S3 키로 사용
+        filename = file.filename
 
         try:
             s3_client.upload_fileobj(
@@ -229,12 +224,9 @@ def upload_image():
         except ClientError as e:
             return f"S3 업로드 실패: {e}", 500
 
-        # [취약점] SQL Injection
         conn = get_db()
         conn.execute(
             f"INSERT INTO images (uploader, filename, caption) "
-            # f"VALUES ('{session['username']}', '{filename}', '{caption}')"
-            # 변경 (filename 대신 s3_url 저장)
             f"VALUES ('{session['username']}', '{s3_url}', '{caption}')"
         )
         conn.commit()
@@ -247,20 +239,17 @@ def upload_image():
 # --------------------- 이미지 상세 ---------------------
 @app.route("/gallery/<iid>")
 def view_image(iid):
-    # [취약점] SQL Injection
     conn = get_db()
     image = conn.execute(f"SELECT * FROM images WHERE id={iid}").fetchone()
     conn.close()
     if not image:
         return "이미지가 존재하지 않습니다.", 404
-    # [취약점] Stored XSS (caption)
     return render_template("image_detail.html", image=image, user=session.get("username"))
 
 
 # --------------------- 이미지 삭제 ---------------------
 @app.route("/gallery/delete/<int:iid>")
 def delete_image(iid):
-    # [취약점] IDOR + CSRF
     if "username" not in session:
         return redirect(url_for("login"))
     conn = get_db()
@@ -275,12 +264,10 @@ def delete_image(iid):
 def search():
     q = request.args.get("q", "")
     conn = get_db()
-    # [취약점] SQL Injection (LIKE)
     rows = conn.execute(
         f"SELECT * FROM posts WHERE title LIKE '%{q}%' OR content LIKE '%{q}%'"
     ).fetchall()
     conn.close()
-    # [취약점] Reflected XSS
     html = f"<h2>'{q}' 검색 결과</h2><ul>"
     for r in rows:
         html += f"<li><a href='/post/{r['id']}'>{r['title']}</a></li>"
@@ -291,7 +278,7 @@ def search():
 # --------------------- 업로드 파일 서빙 ---------------------
 @app.route("/files/<path:filename>")
 def files(filename):
-    # [취약점] Path Traversal
+    # filename을 정규화(경로 탈출 문자 제거)하지 않고 그대로 join
     full = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     if not os.path.exists(full):
         return "파일 없음", 404
@@ -381,8 +368,9 @@ def decode_ip(host: str) -> str:
 def normalize_url(url: str) -> str:
     """
     URL의 호스트 부분만 표준 IP로 변환해서 반환.
-    필터는 원본 url을 검사하고, 실제 fetch는 변환된 url로 함.
-    이게 바로 [취약점]: 필터가 원본만 보기 때문에 우회됨.
+    필터(is_blocked_by_level)는 원본 url 문자열을 검사하지만, 실제 요청은
+    이 함수가 반환한 정규화된 url로 나간다. 그래서 필터가 원본 표기만
+    보고 통과시켜도, 실제 목적지는 정규화 후의 진짜 주소가 된다.
     """
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname  # 포트 제외한 순수 호스트
@@ -398,7 +386,6 @@ def normalize_url(url: str) -> str:
         netloc = decoded
 
     return urllib.parse.urlunparse(parsed._replace(netloc=netloc))
-
 
 
 # --------------------- SSRF 보안 레벨 (bee-box 스타일) ---------------------
@@ -496,10 +483,9 @@ def fetch():
                 f"(보안 {SSRF_LEVELS[level]})<br><a href='/preview'>돌아가기</a>"), 403
 
     try:
-        # [취약점] 어떤 URL이든 서버 프로세스가 대신 요청함
-        #         - 내부망(사설 IP) 접근 가능
-        #         - file:// 스킴으로 로컬 파일 읽기 가능
-        #         - 리다이렉트 따라감
+        # 서버 프로세스가 사용자 지정 URL로 요청을 대신 보낸다.
+        # file:// 스킴은 로컬 파일 읽기로, 일반 스킴은 urllib으로 그대로 요청하며
+        # 리다이렉트도 기본적으로 따라간다.
         if fetch_url.lower().startswith("file://"):
             path = fetch_url[7:]
             with open(path, "rb") as f:
@@ -520,7 +506,8 @@ def fetch():
 # --------------------- 관리자 페이지 ---------------------
 @app.route("/admin")
 def admin():
-    # [취약점] 쿠키 role만 확인
+    # 세션의 role보다 요청에 실린 role 쿠키 값을 우선적으로 신뢰한다
+    # (쿠키가 있으면 쿠키 값을, 없으면 세션 값을 사용).
     role = request.cookies.get("role", session.get("role", "user"))
     if role != "admin":
         return "접근 거부. (힌트: 쿠키를 확인해보세요)", 403

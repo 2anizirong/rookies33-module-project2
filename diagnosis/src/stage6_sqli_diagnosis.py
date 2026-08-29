@@ -1,28 +1,21 @@
 """
 Stage 6: SQL Injection Diagnosis
-- 팀 게시판(web/app.py)에서 수동 체크리스트로 확인된 SQLi 지점을 자동 진단
-- SSRF 파이프라인(stage1~5)과 달리 대상 엔드포인트가 여러 개로 흩어져 있어서
-  파라미터/싱크를 자동 탐색하지 않고, 확인된 후보(CANDIDATES)를 직접 정의해서 사용.
 
-v2 변경점:
-- requests.Session()으로 통일 → 로그인 세션 쿠키를 이후 요청에 계속 사용
-- 시작 시 /login 의 인증 우회 SQLi(' OR '1'='1' -- )로 자동 로그인 부트스트랩
-  → needs_auth=True인 후보(/post/new 등)도 세션이 있는 상태로 정상 진단 가능
-- boolean_based 테스트에 실제 전송된 최종 URL을 evidence에 남겨서 디버깅 용이하게 함
+팀 게시판(web/app.py)에서 수동 체크리스트로 확인된 SQLi 지점을 자동 진단한다.
+SSRF 파이프라인(stage1~5)과 달리 대상 엔드포인트가 여러 개로 흩어져 있어서
+파라미터/싱크를 자동 탐색하지 않고, 이미 확인된 후보(CANDIDATES)를 직접 정의해서 사용한다.
 
-v3 변경점:
-- /post/<pid> boolean_based payload를 "1' OR '1'='1" / "1' AND '1'='2" (따옴표 깨기 방식)로 변경.
-  기존 "1 AND 1=1"류 페이로드는 브라우저에서 직접 재현해봐도 계속 실패했는데,
-  원인은 URL 인코딩이 아니라 실제 쿼리가 id={pid}(따옴표 없음)가 아니라
-  id='{pid}'(따옴표로 감싸짐)로 조립되기 때문이었음 — 따옴표 없는 페이로드는
-  그냥 문자열 그대로 비교돼서 매치가 안 됨. 로컬 sqlite3 재현으로 확인.
-- urllib.parse.quote로 경로 세그먼트를 직접 인코딩해서 requests의 자동 인코딩에 의존하지 않음
+동작 순서:
+1. /login 의 인증 우회 SQLi(' OR '1'='1' -- )로 먼저 로그인해서 세션을 확보한다.
+   → needs_auth=True인 후보(/post/new 등)도 로그인된 상태로 정상 진단 가능.
+2. requests.Session()으로 쿠키를 계속 유지하면서 CANDIDATES를 순회, 각 후보에
+   지정된 기법(technique)으로 SQLi를 시도한다.
 
 사용법 (단독 실행):
     python stage6_sqli_diagnosis.py http://52.78.187.138:5000
 
-main.py 파이프라인과는 별도 스크립트로 분리 (인터페이스가 안 맞아서).
-결과 JSON은 stage3와 최대한 비슷한 스키마로 맞춤 → 리포트/대시보드 재사용 목적.
+main.py 파이프라인과는 인터페이스가 달라 별도 스크립트로 분리되어 있다.
+결과 JSON은 stage3와 최대한 비슷한 스키마로 맞춰서 리포트/대시보드에서 재사용하기 쉽게 함.
 """
 import argparse
 import json
@@ -75,10 +68,8 @@ CANDIDATES = [
         "param": "pid",
         "fixed_fields": {},
         "technique": "boolean_based",
-        # 실서버에서 "1 AND 1=1"/"2-1" 같은 따옴표 없는 페이로드가 계속 실패해서 원인을 추적한 결과,
-        # 실제 쿼리가 id={pid} (따옴표 없음)가 아니라 id='{pid}' (따옴표로 감싸짐)로 조립되는 것으로 확인됨
-        # (로컬 sqlite3 재현: id='2-1' 은 매치 안 되지만 id='1' OR '1'='1' 은 매치됨 — 실서버 동작과 일치).
-        # 그래서 따옴표를 직접 깨고 나오는 고전적인 boolean 페이로드로 변경.
+        # 실제 쿼리가 id={pid}(따옴표 없음)가 아니라 id='{pid}'(따옴표로 감싸짐)로 조립되는 것을
+        # 로컬 sqlite3 재현으로 확인함 → 따옴표를 직접 깨고 나오는 고전적 boolean 페이로드 사용.
         "boolean_pair": ("1' OR '1'='1", "1' AND '1'='2"),
         "needs_auth": False,
     },
@@ -241,10 +232,8 @@ def _test_boolean_based_path(session: requests.Session, base_url: str, cand: dic
     endpoint_template = cand["endpoint"]
     tests = []
 
-    # requests의 자동 URL 인코딩에 기대지 않고 경로 세그먼트를 직접 percent-encode.
-    # quote() 기본값(safe="/")은 "/"는 그대로 두고 나머지 특수문자만 인코딩 —
-    # 페이로드에 남은 문자(숫자/문자/= //**)는 전부 URL-safe라 사실상 그대로 나가지만,
-    # requests의 내부 requote 로직에 맡기지 않고 우리가 직접 통제한다는 의미로 명시.
+    # requests의 자동 URL 인코딩에 기대지 않고 경로 세그먼트를 직접 percent-encode해서
+    # 인코딩 방식을 명시적으로 통제한다.
     url_true = base_url + endpoint_template.format(value=quote(true_val))
     url_false = base_url + endpoint_template.format(value=quote(false_val))
 

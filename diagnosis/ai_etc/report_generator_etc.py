@@ -1,11 +1,12 @@
 """
 ai_etc 파이프라인의 최종 리포트 생성 단계.
-evidence(SQLi/Stored XSS/OS Command Injection) + web_result를 OpenAI에 종합시켜
-"vulnerabilities" 배열(취약점 타입별 항목)을 만들고, 항목별로 markdown도 생성한다.
+evidence(SQLi/Stored XSS/OS Command Injection/Login Rate Limit) + web_result를 OpenAI에
+종합시켜 "vulnerabilities" 배열(취약점 타입별 항목)을 만들고, 항목별로 markdown도 생성한다.
 
 ai/report_generator.py(SSRF 전용, 취약점 1개 기준 스키마)와 완전히 독립.
-여기는 애초에 SQLi/XSS/CmdInjection 최대 3종류를 한 번에 다룰 수 있게
-vulnerabilities 배열 구조로 설계함 — 나중에 취약점이 더 늘어나도 스키마 변경 불필요.
+여기는 애초에 여러 취약점 유형을 한 번에 다룰 수 있게 vulnerabilities 배열 구조로 설계함
+— 실제로 login_rate_limit을 나중에 4번째 타입으로 추가할 때도 VULN_TYPES 목록만
+늘리면 됐고 스키마 자체는 그대로 재사용됨.
 
 vuln_type을 AI가 자유롭게 짓지 않고 enum으로 고정하는 이유:
 analyze_etc.py가 이 값을 파일명(report_etc_{vuln_type}.md)으로 그대로 쓰기 때문.
@@ -30,7 +31,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 
 # analyze_etc.py가 파일명에 그대로 쓰는 고정 타입 목록
-VULN_TYPES = ["sqli", "stored_xss", "os_command_injection"]
+VULN_TYPES = ["sqli", "stored_xss", "os_command_injection", "login_rate_limit"]
 
 
 # Responses API Structured Outputs용 스키마.
@@ -241,6 +242,7 @@ def generate_etc(
    sqli_endpoint_count={summary.get('sqli_endpoint_count', 0)}, sqli_vulnerable_count={summary.get('sqli_vulnerable_count', 0)}
    xss_tested_count={summary.get('xss_tested_count', 0)}, xss_vulnerable_count={summary.get('xss_vulnerable_count', 0)}
    cmd_injection_tested_count={summary.get('cmd_injection_tested_count', 0)}, cmd_injection_vulnerable_count={summary.get('cmd_injection_vulnerable_count', 0)}
+   login_rate_limit_tested_count={summary.get('login_rate_limit_tested_count', 0)}, login_rate_limit_vulnerable_count={summary.get('login_rate_limit_vulnerable_count', 0)}
    각 타입의 *_count(테스트된 개수)가 0보다 크면 반드시 vulnerabilities 배열에 포함한다.
    테스트된 개수가 0인 타입(애초에 진단을 시도하지 않은 타입)만 배열에서 제외한다.
 6. vuln_type별로 verdict를 정확히 판정한다:
@@ -256,9 +258,13 @@ def generate_etc(
      반드시 포함한다.
    - recommendations는 "현재 방어 상태 유지 확인용 회귀 테스트", "추가 페이로드/우회 기법으로 정기 재검증" 등
      방어 유지·검증 관점으로 작성한다.
-8. vuln_type은 정확히 "sqli", "stored_xss", "os_command_injection" 중 하나만 사용한다 (다른 이름 금지).
-9. 각 vuln_type의 CWE는 SQLi→CWE-89, Stored/Reflected XSS→CWE-79, OS Command Injection→CWE-78을 기본으로 한다.
+8. vuln_type은 정확히 "sqli", "stored_xss", "os_command_injection", "login_rate_limit" 중 하나만 사용한다
+   (다른 이름 금지).
+9. 각 vuln_type의 CWE는 SQLi→CWE-89, Stored/Reflected XSS→CWE-79, OS Command Injection→CWE-78,
+   Login Rate Limit(무차별 대입 방어 부재)→CWE-307을 기본으로 한다.
 10. 인증 우회(auth_bypass)로 확인된 접근 범위를 넘어서는 권한 상승을 추정하지 마라.
+11. login_rate_limit 타입은 "비밀번호가 뚫렸다"가 아니라 "무차별 대입을 막는 방어 장치(rate limit/계정
+    잠금/CAPTCHA)가 없다"는 사실만 다룬다. 실제 비밀번호 유출이나 계정 탈취가 확인됐다고 서술하지 마라.
 
 Risk Score 규칙(프로젝트 자체 점수이며 CVSS가 아님):
 - verdict="safe"인 타입은 항상 severity="low", score는 0.0~1.9 범위로 고정한다
@@ -270,6 +276,10 @@ Risk Score 규칙(프로젝트 자체 점수이며 CVSS가 아님):
     Reflected만 확인 → 대체로 3.0~5.9.
   - OS Command Injection: 실제 명령 실행(연산 결과가 응답에 반영)까지 확인 → 대체로 8.0~9.5(HIGH~CRITICAL,
     서버 전체 장악 가능성 때문). 단순 응답 지연/에러만 확인 → 대체로 5.0~6.9.
+  - Login Rate Limit(무차별 대입 방어 부재, verdict="no_automation_protection_observed") → 대체로
+    4.0~6.0(MEDIUM). 단독으로는 즉시 계정 탈취로 이어지지 않고 비밀번호 강도/추가 방어에 의존하지만,
+    자동화 공격을 막을 장치가 전혀 없다는 것 자체가 실질적 약점이다. 다른 인증 관련 취약점(SQLi 인증
+    우회 등)과 함께 확인됐다면 그 조합 위험을 analysis에서 언급하되 Risk Score 자체를 과도하게 올리지 마라.
   - 9.5 이상/CRITICAL 최상단은 실제 파일 시스템 접근, 원격 코드 실행이 직접 확인된 경우에만 사용.
 
 보고서에서는 반드시 'confirmed_impact'와 'potential_impact'를 구분한다.
@@ -283,7 +293,8 @@ Risk Score 규칙(프로젝트 자체 점수이며 CVSS가 아님):
             reasoning={"effort": "low"},
             instructions=(
                 "You are a web application security intelligence analyst covering "
-                "SQL Injection, Cross-Site Scripting, and OS Command Injection. "
+                "SQL Injection, Cross-Site Scripting, OS Command Injection, and "
+                "missing login rate limiting / brute-force protection (CWE-307). "
                 "Do not perform additional searches. "
                 "The supplied diagnostic evidence is the sole source of truth about the assessed target. "
                 "Web research is external context only. "
@@ -332,6 +343,7 @@ VULN_TYPE_LABEL = {
     "sqli": "SQL Injection",
     "stored_xss": "Stored / Reflected XSS",
     "os_command_injection": "OS Command Injection",
+    "login_rate_limit": "Login Rate Limiting (Brute-force Protection)",
 }
 
 
