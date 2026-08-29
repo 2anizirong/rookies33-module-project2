@@ -16,3 +16,6 @@ arjun>=2.2.7
 
 # dotenv 
 python-dotenv>=1.0.0
+
+# plotly
+plotly>=5.20

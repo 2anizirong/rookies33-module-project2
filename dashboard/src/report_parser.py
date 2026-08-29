@@ -240,17 +240,8 @@ def report_json_to_markdown(data: dict[str, Any]) -> str:
         lines.append(f"  - 적용 이유: {g.get('relevance', '')}")
     lines.append("")
 
-    lines.append("## 7. 내부 보안 가이드 연계")
-    lines.append("")
-    for g in data.get("internal_guidance") or []:
-        lines.append(f"- **{g.get('document', '-')} / {g.get('topic', '-')}**")
-        lines.append(f"  - 관계: {g.get('relationship', '-')}")
-        lines.append(f"  - 내용: {g.get('guidance', '')}")
-        lines.append(f"  - 진단과의 관계: {g.get('relevance', '')}")
-    lines.append("")
-
     lines += [
-        "## 8. 종합 분석",
+        "## 7. 종합 분석",
         "",
         "### 공격 시나리오",
         "",
@@ -270,7 +261,7 @@ def report_json_to_markdown(data: dict[str, Any]) -> str:
         "",
     ]
 
-    lines.append("## 9. 대응방안")
+    lines.append("## 8. 대응방안")
     lines.append("")
     for rec in data.get("recommendations") or []:
         priority = str(rec.get("priority", "-")).upper()

@@ -6,9 +6,10 @@ scan_result.json 후처리 AI 파이프라인.
 scan_result.json
 → 안전한 Evidence 추출
 → Web Search
-→ File Search
 → 최종 LLM 종합
 → ai_report.json + report.md
+
+File Search(내부 가이드 Vector Store 조회)는 팀 결정으로 제외함 (ai_etc 파이프라인과 동일하게 Web Search만 사용).
 """
 
 from __future__ import annotations
@@ -35,15 +36,16 @@ DEFAULT_MODEL = os.getenv(
     "gpt-5",
 )
 
-# AI 모듈 import 
+# AI 모듈 import
+# File Search(file_research)는 팀 결정으로 SSRF 파이프라인에서도 제외함 (ai_etc와 동일하게 web_search만 사용).
 from evidence_extractor import build_safe_evidence
-import web_research, file_research, report_generator
+import web_research, report_generator
 
 def analyze(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict[str, Any]:
     # OpenAI 의존 모듈은 실제 AI 실행 시점에만 불러온다.
     evidence = build_safe_evidence(scan_result)
 
-    print("[AI 0/3] Evidence Extraction")
+    print("[AI 0/2] Evidence Extraction")
     summary = evidence.get("confirmed_summary", {})
     print(
         "         "
@@ -54,7 +56,7 @@ def analyze(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict[str
         f"credentials={summary.get('temporary_credentials_exposed', False)}"
     )
 
-    print("[AI 1/3] Web Research")
+    print("[AI 1/2] Web Research")
     web_result = web_research.run(evidence=evidence, model=model)
     print(
         f"         status={web_result.get('status')}, "
@@ -62,19 +64,10 @@ def analyze(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict[str
         f"sources={len(web_result.get('sources', []))}"
     )
 
-    print("[AI 2/3] File Research")
-    file_result = file_research.run(evidence=evidence, model=model)
-    print(
-        f"         status={file_result.get('status')}, "
-        f"tool_used={file_result.get('file_search_used', False)}, "
-        f"sources={len(file_result.get('sources', []))}"
-    )
-
-    print("[AI 3/3] Final Synthesis")
+    print("[AI 2/2] Final Synthesis")
     report = report_generator.generate(
         evidence=evidence,
         web_result=web_result,
-        file_result=file_result,
         model=model,
     )
 
@@ -87,14 +80,11 @@ def analyze(scan_result: dict[str, Any], model: str = DEFAULT_MODEL) -> dict[str
         "safe_evidence": evidence,
         "research_status": {
             "web_search": web_result.get("status", "unknown"),
-            "file_search": file_result.get("status", "unknown"),
             "web_search_used": web_result.get("web_search_used", False),
-            "file_search_used": file_result.get("file_search_used", False),
         },
         "report": report,
         "sources": {
             "web": web_result.get("sources", []),
-            "files": file_result.get("sources", []),
         },
     }
 

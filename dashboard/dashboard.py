@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -34,16 +33,85 @@ from src.report_parser import (
 )
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-MAIN_FILE = PROJECT_ROOT / "main.py"
-CONFIG_FILE = PROJECT_ROOT / "config.json"
-OUTPUT_FILE = PROJECT_ROOT / "dashboard_scan_result.json"
-
-# AI 리포트(report.md / ai_report.json)의 실제 생성 위치는 dashboard/가 아니라
-# 팀원이 별도로 만든 diagnosis/ 파이프라인이다. dashboard.py는 그 결과를 읽기만 한다.
+PROJECT_ROOT = Path(__file__).resolve().parent          # dashboard/
 DIAGNOSIS_DIR = PROJECT_ROOT.parent / "diagnosis"
-REPORT_FILE = DIAGNOSIS_DIR / "report.md"
-REPORT_JSON_FILE = DIAGNOSIS_DIR / "ai_report.json"
+
+# 1단계: diagnosis/main.py  <fetch_url> -o <AAA.json>   (cwd = dashboard/)
+DIAGNOSIS_MAIN = DIAGNOSIS_DIR / "main.py"
+AAA_JSON = DIAGNOSIS_DIR / "AAA.json"
+
+# 2단계: diagnosis/ai/analyze.py --input AAA.json        (cwd = diagnosis/)
+ANALYZE_MAIN = DIAGNOSIS_DIR / "ai" / "analyze.py"
+
+# analyze.py가 report.md / report.json을 diagnosis/ai/ 에 쓰는지 diagnosis/ 에 쓰는지
+# 팀 코드에 따라 다를 수 있어 두 위치를 모두 후보로 두고, 존재하는 쪽을 사용한다.
+REPORT_MD_CANDIDATES = [DIAGNOSIS_DIR / "ai" / "report.md", DIAGNOSIS_DIR / "report.md"]
+REPORT_JSON_CANDIDATES = [DIAGNOSIS_DIR / "ai" / "report.json", DIAGNOSIS_DIR / "report.json"]
+
+
+def _first_existing(paths: list[Path]) -> Path | None:
+    for p in paths:
+        if p.exists():
+            return p
+    return None
+
+
+def normalize_scan_result(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    diagnosis/main.py가 실제로 내놓는 AAA.json 스키마
+    (meta / stages.parameter_discovery / stages.sink_discovery /
+     stages.bypass_diagnosis / stages.imds_exposure / stages.cloud_impact)
+    를 render_dashboard()가 기대하는 평평한(top-level) 스키마로 변환한다.
+
+    실제 AAA.json 예시:
+        {
+          "meta": {"target": "...", "timestamp": "..."},
+          "stages": {
+            "parameter_discovery": {"parameters": [...]},
+            "sink_discovery": {"ssrf_candidates": [...]},
+            "bypass_diagnosis": [{"parameter": {...}, "tests": [...], "result": "vulnerable"}],
+            "imds_exposure": {"imds": {...}, "iam_role": {...}, "temporary_credentials": {...}},
+            "cloud_impact": {"principal": {...}, "cloud_impact": [...], "overall_impact": "high"}
+          }
+        }
+    """
+    stages = raw.get("stages", {}) or {}
+    meta_block = raw.get("meta", {}) or {}
+
+    imds_exposure = stages.get("imds_exposure") or {}
+
+    raw_cloud = stages.get("cloud_impact") or {}
+    normalized_impacts = []
+    for item in raw_cloud.get("cloud_impact", []) or []:
+        permissions = item.get("permissions") or []
+        normalized_impacts.append(
+            {
+                **item,
+                # 리스트에 올라와 있다는 것 자체가 이미 접근이 확인됐다는 뜻
+                "accessible": True,
+                # 렌더링 쪽 표시용 alias (기존 코드가 "action"/"assets" 필드명을 기대함)
+                "action": item.get("resource", "-"),
+                "assets": permissions,
+                "asset_count": len(permissions),
+            }
+        )
+
+    return {
+        "target": {"endpoint": meta_block.get("target", "-")},
+        "timestamp": meta_block.get("timestamp"),
+        "parameter_discovery": stages.get("parameter_discovery", {}) or {},
+        "ssrf_sink_discovery": stages.get("sink_discovery", {}) or {},
+        "ssrf_bypass_diagnosis": {"bypass_results": stages.get("bypass_diagnosis", []) or []},
+        "imds_credential_exposure": {
+            "assessments": [imds_exposure] if imds_exposure else [],
+        },
+        "cloud_impact_assessment": {
+            "principal": raw_cloud.get("principal", {}) or {},
+            "cloud_impact": normalized_impacts,
+            "overall_impact": raw_cloud.get("overall_impact", "unknown"),
+            "region": raw_cloud.get("region", "-"),
+        },
+    }
 
 
 STAGE_PROGRESS = {
@@ -182,96 +250,119 @@ def validate_target(value: str) -> tuple[bool, str]:
 
 
 def run_scan(target: str) -> dict[str, Any]:
-    if not MAIN_FILE.exists():
-        raise FileNotFoundError(f"main.py를 찾을 수 없습니다: {MAIN_FILE}")
+    if not DIAGNOSIS_MAIN.exists():
+        raise FileNotFoundError(f"main.py를 찾을 수 없습니다: {DIAGNOSIS_MAIN}")
 
-    if not CONFIG_FILE.exists():
-        raise FileNotFoundError(f"config.json을 찾을 수 없습니다: {CONFIG_FILE}")
+    if not ANALYZE_MAIN.exists():
+        raise FileNotFoundError(f"analyze.py를 찾을 수 없습니다: {ANALYZE_MAIN}")
+
+    fetch_url = target.strip().rstrip("/")
+    if not fetch_url.endswith("/fetch"):
+        fetch_url = fetch_url + "/fetch"
 
     progress = st.progress(0.0, text="진단 준비 중")
     status_text = st.empty()
     log_box = st.empty()
-
-    command = [
-        sys.executable,
-        "-u",
-        str(MAIN_FILE),
-        "--target",
-        target,
-        "--config",
-        str(CONFIG_FILE),
-        "--output",
-        str(OUTPUT_FILE),
-        "--report",
-        str(REPORT_FILE),
-    ]
+    logs: list[str] = []
 
     child_env = os.environ.copy()
     child_env["PYTHONIOENCODING"] = "utf-8"
     child_env["PYTHONUTF8"] = "1"
 
-    process = subprocess.Popen(
-        command,
-        cwd=str(PROJECT_ROOT),
-        env=child_env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
+    def stream(command: list[str], cwd: Path, label: str) -> int:
+        logs.append(f"\n[$] cd {cwd.name} && {' '.join(command)}")
+        log_box.code("\n".join(logs[-16:]), language="text")
 
-    logs: list[str] = []
+        process = subprocess.Popen(
+            command,
+            cwd=str(cwd),
+            env=child_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        assert process.stdout is not None
 
-    assert process.stdout is not None
+        for raw_line in process.stdout:
+            line = raw_line.rstrip()
+            if not line:
+                continue
+            logs.append(line)
+            log_box.code("\n".join(logs[-16:]), language="text")
 
-    for raw_line in process.stdout:
-        line = raw_line.rstrip()
-        if not line:
-            continue
-
-        logs.append(line)
-        logs = logs[-14:]
-        log_box.code("\n".join(logs), language="text")
-
-        for marker, (value, label) in STAGE_PROGRESS.items():
-            if marker in line:
-                progress.progress(value, text=label)
+            matched = False
+            for marker, (value, stage_label) in STAGE_PROGRESS.items():
+                if marker in line:
+                    progress.progress(value, text=stage_label)
+                    status_text.caption(stage_label)
+                    matched = True
+                    break
+            if not matched:
                 status_text.caption(label)
-                break
 
-    return_code = process.wait()
+        return process.wait()
 
-    if return_code != 0:
+    # 1단계: diagnosis/main.py  <fetch_url> -o AAA.json   (stage 1~5, cwd = dashboard/)
+    status_text.caption("1~5단계 진단 실행 중 (수 분 소요될 수 있음)")
+    code1 = stream(
+        [sys.executable, "-u", str(DIAGNOSIS_MAIN), fetch_url, "-o", str(AAA_JSON)],
+        cwd=PROJECT_ROOT,
+        label="1~5단계 진단 실행 중",
+    )
+    if code1 != 0:
         progress.progress(0.0, text="진단 실패")
         raise RuntimeError(
-            "진단 도구 실행 중 오류가 발생했습니다. 위 실행 로그를 확인하세요."
+            "diagnosis/main.py 실행 중 오류가 발생했습니다. 위 실행 로그를 확인하세요."
+        )
+    if not AAA_JSON.exists():
+        raise FileNotFoundError(f"진단은 종료됐지만 결과 JSON을 찾을 수 없습니다: {AAA_JSON}")
+
+    # 2단계: diagnosis/ai/analyze.py --input AAA.json   (stage 6, cwd = diagnosis/)
+    progress.progress(0.80, text="AI Security Report 생성 중")
+    status_text.caption("AI Security Report 생성 중 (수 분 소요될 수 있음)")
+    code2 = stream(
+        [sys.executable, "-u", str(ANALYZE_MAIN), "--input", AAA_JSON.name],
+        cwd=DIAGNOSIS_DIR,
+        label="AI Security Report 생성 중",
+    )
+    if code2 != 0:
+        progress.progress(0.80, text="AI 리포트 생성 실패")
+        raise RuntimeError(
+            "ai/analyze.py 실행 중 오류가 발생했습니다. 위 실행 로그를 확인하세요."
         )
 
-    if not OUTPUT_FILE.exists():
-        raise FileNotFoundError("진단은 종료됐지만 결과 JSON을 찾을 수 없습니다.")
-
-    with OUTPUT_FILE.open("r", encoding="utf-8") as f:
-        json_result = json.load(f)
-
-    # AI 리포트는 diagnosis/ai_report.json(구조화 JSON) 또는 diagnosis/report.md
-    # (그걸 사람이 읽기 좋게 렌더링한 Markdown) 둘 중 하나로 존재한다. ai_report.json이
-    # 더 신뢰할 수 있는 원본이므로 있으면 그걸 우선 쓰고, 없으면 report.md를 그대로 읽는다.
-    # 어느 쪽이든 동일한 markdown 텍스트로 정규화해서 이후 렌더링 로직(render_dashboard)은
-    # 형식과 무관하게 그대로 동작한다.
-    if REPORT_JSON_FILE.exists():
-        ai_report_data = json.loads(REPORT_JSON_FILE.read_text(encoding="utf-8"))
-        markdown_text = report_json_to_markdown(ai_report_data.get("report", {}))
-    elif REPORT_FILE.exists():
-        markdown_text = REPORT_FILE.read_text(encoding="utf-8")
-    else:
+    # 리포트 파일이 실제로 나왔는지 확인 (analyze.py가 diagnosis/ai/ 또는 diagnosis/ 에 씀)
+    report_md_path = _first_existing(REPORT_MD_CANDIDATES)
+    report_json_path = _first_existing(REPORT_JSON_CANDIDATES)
+    if report_md_path is None and report_json_path is None:
+        checked = ", ".join(str(p) for p in REPORT_MD_CANDIDATES + REPORT_JSON_CANDIDATES)
         raise FileNotFoundError(
-            f"진단은 종료됐지만 리포트를 찾을 수 없습니다: {REPORT_FILE} / {REPORT_JSON_FILE}"
+            f"analyze.py는 종료됐지만 report.md / report.json을 찾을 수 없습니다. 확인한 경로: {checked}"
         )
+
+    with AAA_JSON.open("r", encoding="utf-8") as f:
+        raw_scan = json.load(f)
+    json_result = normalize_scan_result(raw_scan)
+
+    ai_report_data: dict[str, Any] = {}
+    if report_json_path is not None:
+        ai_report_data = json.loads(report_json_path.read_text(encoding="utf-8"))
+
+    if report_md_path is not None:
+        markdown_text = report_md_path.read_text(encoding="utf-8")
+    else:
+        # report.md가 없으면 report.json의 "report" 필드를 마크다운으로 변환
+        markdown_text = report_json_to_markdown(ai_report_data.get("report", ai_report_data))
+
+    # ai_report 메타(provider, fallback_reason 등)를 json_result 안에 병합해
+    # 아래 render_dashboard()가 이전과 동일하게 json_result.get("ai_report", {}) 로 읽을 수 있게 함
+    json_result["ai_report"] = ai_report_data.get("ai_report", ai_report_data)
 
     progress.progress(1.0, text="진단 완료")
-    status_text.success("1~6단계 진단이 완료되었습니다.")
+    status_text.success("전체 파이프라인(1~6단계)이 완료되었습니다.")
 
     return {
         "markdown": markdown_text,
@@ -378,7 +469,7 @@ def render_dashboard(result: dict[str, Any]) -> None:
     impacts = cloud.get("cloud_impact", [])
     accessible_impacts = [
         item for item in impacts
-        if item.get("accessible") is True and item.get("service") in {"S3", "LAMBDA"}
+        if item.get("accessible") is True and str(item.get("service", "")).upper() in {"S3", "LAMBDA"}
     ]
     overall_impact = str(cloud.get("overall_impact", "unknown"))
 
@@ -495,7 +586,7 @@ def render_dashboard(result: dict[str, Any]) -> None:
                 f"<span class='service'>{e(impact.get('service', '-'))}</span>"
                 f"<span class='badge badge-bad'>{e(str(impact.get('impact', '-')).upper())}</span>"
                 "</div>"
-                f"<div class='resource'>{e(impact.get('action', '-'))} · {e(asset_count)}개 리소스 확인</div>"
+                f"<div class='resource'>{e(impact.get('action', '-'))} · {e(asset_count)}개 권한 확인</div>"
                 f"<div>{permissions}</div>"
                 "</div>",
                 unsafe_allow_html=True,
@@ -530,203 +621,6 @@ def render_dashboard(result: dict[str, Any]) -> None:
         st.markdown(f"<div class='section-kicker'>{e(kicker)}</div><div class='section-title'>{e(label)}</div>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown((section["body"] if section else "") or "_내용을 찾지 못했습니다._")
-
-    st.divider()
-    st.subheader("상세 데이터 (원본)")
-
-    detail_tab1, detail_tab2, detail_tab3, detail_tab4, detail_tab5, detail_tab6 = st.tabs(
-        [
-            "Parameter",
-            "SSRF / IMDS",
-            "Credential",
-            "Cloud Impact",
-            "리포트 원문",
-            "결과 JSON",
-        ]
-    )
-
-    with detail_tab1:
-        st.markdown("#### Parameter Discovery")
-        if params:
-            df = pd.DataFrame(params)
-            columns = [c for c in ["name", "method", "location", "endpoint"] if c in df.columns]
-            st.dataframe(df[columns], use_container_width=True, hide_index=True)
-        else:
-            st.info("발견된 파라미터가 없습니다.")
-
-        with st.expander("Arjun 실행 로그"):
-            for run in json_result.get("parameter_discovery", {}).get("arjun_runs", []):
-                st.markdown(f"**{run.get('method', '-')}**")
-                st.code(run.get("stdout", ""), language="text")
-
-    with detail_tab2:
-        detail_left, detail_right = st.columns(2)
-
-        with detail_left:
-            st.markdown("#### SSRF Sink")
-            sink_tests = json_result.get("ssrf_sink_discovery", {}).get("tests", [])
-            if sink_tests:
-                sink_df = pd.DataFrame(
-                    [
-                        {
-                            "parameter": item.get("parameter", {}).get("name"),
-                            "probe": item.get("probe_url"),
-                            "detected": item.get("server_request_detected"),
-                            "status": item.get("status_code"),
-                        }
-                        for item in sink_tests
-                    ]
-                )
-                st.dataframe(sink_df, use_container_width=True, hide_index=True)
-            else:
-                st.info("SSRF Sink 테스트 결과가 없습니다.")
-
-        with detail_right:
-            st.markdown("#### IMDS Diagnosis")
-            if tests:
-                bypass_df = pd.DataFrame(
-                    [
-                        {
-                            "technique": t.get("technique"),
-                            "success": t.get("success"),
-                            "status": t.get("status_code"),
-                            "destination": t.get("destination"),
-                        }
-                        for t in tests
-                    ]
-                )
-                st.dataframe(bypass_df, use_container_width=True, hide_index=True)
-            else:
-                st.info("IMDS 테스트 결과가 없습니다.")
-
-        for test in tests:
-            preview = test.get("evidence_preview")
-            if preview:
-                with st.expander(f"{test.get('technique', 'test')} 증거 미리보기"):
-                    st.code(preview, language="html")
-
-    with detail_tab3:
-        if not assessments:
-            st.info("Credential Exposure 결과가 없습니다.")
-        else:
-            for item in assessments:
-                item_imds = item.get("imds", {})
-                item_role = item.get("iam_role", {})
-                item_cred = item.get("temporary_credentials", {})
-
-                a, b, c, d = st.columns(4)
-                a.metric("IMDS", "Reachable" if item_imds.get("reachable") else "Not confirmed")
-                b.metric("IMDS Version", item_imds.get("version_tested", "-"))
-                c.metric("Region", item_imds.get("region", "-"))
-                d.metric("Credential", "Exposed" if item_cred.get("exposed") else "Not exposed")
-
-                st.write("**IAM Role**", item_role.get("role_name", "-"))
-                st.json(
-                    {
-                        "access_key_id": item_cred.get("access_key_id"),
-                        "secret_access_key": "REDACTED",
-                        "session_token": "REDACTED",
-                        "expiration": item_cred.get("expiration"),
-                    }
-                )
-
-    with detail_tab4:
-        checks = impacts
-
-        cm1, cm2, cm3 = st.columns(3)
-        cm1.metric("Overall Impact", overall_impact.upper())
-        cm2.metric("Region", cloud.get("region", "-"))
-        cm3.metric(
-            "Accessible API",
-            sum(1 for item in checks if item.get("accessible") is True),
-        )
-
-        if checks:
-            access_df = pd.DataFrame(
-                [
-                    {
-                        "서비스": item.get("service", "-"),
-                        "API": item.get("action", "-"),
-                        "접근": 1 if item.get("accessible") is True else 0,
-                        "자산 수": item.get("asset_count", 0),
-                    }
-                    for item in checks
-                ]
-            )
-
-            chart_df = access_df.set_index("서비스")[["접근"]]
-            st.bar_chart(chart_df)
-            st.dataframe(access_df, use_container_width=True, hide_index=True)
-
-            with st.expander("조회된 실습 리소스"):
-                for item in checks:
-                    item_assets = item.get("assets") or []
-                    if item_assets:
-                        st.markdown(f"**{item.get('service')}**")
-                        st.write(item_assets)
-        else:
-            st.info("Cloud Impact 결과가 없습니다.")
-
-    with detail_tab5:
-        h1, h2 = st.columns(2)
-        h1.metric("Provider", ai_report_meta.get("provider", "unknown"))
-        h2.metric("Risk Score", f"{score}/10")
-
-        if ai_report_meta.get("fallback_reason"):
-            st.warning(f"Fallback reason: {ai_report_meta['fallback_reason']}")
-
-        st.markdown(markdown_text)
-
-    with detail_tab6:
-        safe = sanitized_result(json_result)
-        st.caption("Account ID / ARN / UserId 일부는 대시보드 표시용으로 마스킹합니다.")
-        st.json(safe)
-
-        st.download_button(
-            "마스킹 결과 JSON 다운로드 (상세)",
-            data=json.dumps(safe, ensure_ascii=False, indent=2),
-            file_name="scan_result_sanitized.json",
-            mime="application/json",
-            key="detail_download",
-        )
-
-    ## 보고서 생성 부분
-
-    # st.divider()
-    # st.markdown("<div class='section-kicker'>REPORT</div><div class='section-title'>PDF 보고서</div>", unsafe_allow_html=True)
-    # st.caption(f"대응방안 가이드 PDF를 {PDF_DIR} 폴더에 넣어두면 권고사항 생성 시 자동으로 참고합니다.")
-    #
-    # if st.button("PDF 보고서 생성", use_container_width=True, key="gen_pdf_report"):
-    #     with st.spinner("가이드 문서를 참고해 보고서를 생성하는 중입니다..."):
-    #         pdf_source = {
-    #             **json_result,
-    #             "ai_risk_analysis": {
-    #                 "provider": ai_report_meta.get("provider"),
-    #                 "risk": {"severity": severity, "score": score},
-    #                 "summary": reasoning,
-    #                 "evidence": evidence_list,
-    #                 "recommendations": recommendation_list,
-    #                 "fallback_reason": ai_report_meta.get("fallback_reason"),
-    #             },
-    #         }
-    #         guided = fetch_guided_recommendations(json_result)
-    #         st.session_state["pdf_report_bytes"] = build_pdf_report(pdf_source, guided)
-    #         st.session_state["pdf_report_guided"] = guided
-    #
-    # if "pdf_report_bytes" in st.session_state:
-    #     guided_info = st.session_state.get("pdf_report_guided") or {}
-    #     if guided_info.get("available"):
-    #         st.success(f"가이드 문서 {guided_info.get('guide_count', 0)}건을 참고해 권고사항을 보강했습니다.")
-    #     else:
-    #         st.info(f"가이드 문서 보강 없이 기본 권고사항으로 생성되었습니다. ({guided_info.get('reason', '-')})")
-    #
-    #     st.download_button(
-    #         "보고서 다운로드 (PDF)",
-    #         data=st.session_state["pdf_report_bytes"],
-    #         file_name="ssrf_diagnosis_report.pdf",
-    #         mime="application/pdf",
-    #         use_container_width=True,
-    #     )
 
     st.markdown(f"<div class='footer-note'>SSRF SENTINEL · TARGET {e(target_endpoint.upper())}</div>", unsafe_allow_html=True)
 

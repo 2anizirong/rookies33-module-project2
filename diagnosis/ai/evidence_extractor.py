@@ -217,6 +217,25 @@ def build_safe_evidence(scan_result: dict[str, Any]) -> dict[str, Any]:
     )
     cloud_access_confirmed = bool(cloud_services)
 
+    # 실제 문자열 값은 AI에 넘기지 않지만, "진단이 해당 식별자/값을 실제로 확인했다"는
+    # 사실 자체는 boolean으로 넘긴다. 이게 없으면 AI가 값 문자열이 없다는 이유로
+    # '미확인'이라고 단정해 원본 scan_result.json과 모순되는 리포트를 쓴다.
+    iam_role_identified = any(
+        bool(_as_dict(item.get("iam_role")).get("role_name"))
+        for item in imds_results
+    )
+    credential_values_captured = any(
+        _as_dict(item.get("temporary_credentials")).get("exposed") is True
+        and bool(_as_dict(item.get("temporary_credentials")).get("access_key_id"))
+        for item in imds_results
+    )
+    resource_names_identified = any(
+        bool(item.get("resource"))
+        for item in _as_list(cloud_result.get("cloud_impact", []))
+        if isinstance(item, dict)
+    )
+    principal_identified = bool(principal.get("name"))
+
     return {
         "schema": "diagnosis-safe-evidence-v2",
         "confirmed_summary": {
@@ -241,9 +260,14 @@ def build_safe_evidence(scan_result: dict[str, Any]) -> dict[str, Any]:
         },
         "stage4_imds_exposure": {
             "assessments": imds_assessments,
+            # 값 문자열은 미포함. "진단이 실제로 확인함" 여부만 표시.
+            "iam_role_identified": iam_role_identified,
+            "credential_values_captured": credential_values_captured,
         },
         "stage5_cloud_impact": {
             "principal_type": principal.get("type"),
+            "principal_identified": principal_identified,
+            "resource_names_identified": resource_names_identified,
             "overall_impact": cloud_result.get("overall_impact"),
             "services": cloud_services,
         },
