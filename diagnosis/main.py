@@ -82,8 +82,14 @@ def diagnose(target_url: str, method: str, callback_server: str, region: str,
     # Stage 7: Stored XSS Diagnosis (Stage 6과 마찬가지로 --base-url 필요)
     print(f"[*] Stage 7: Stored XSS Diagnosis", file=sys.stderr)
     if base_url:
-        p7 = run_stored_xss_diagnosis(base_url, username=xss_username, password=xss_password)
-        print(f"    vulnerable: {p7['summary']['vulnerable_count']} / {p7['summary']['total_tested']}", file=sys.stderr)
+        try:
+            p7 = run_stored_xss_diagnosis(base_url, username=xss_username, password=xss_password)
+            print(f"    vulnerable: {p7['summary']['vulnerable_count']} / {p7['summary']['total_tested']}", file=sys.stderr)
+        except Exception as e:
+            # Stage 6과 동일하게, 대상 서버에 XSS 후보 엔드포인트가 없거나 응답 파싱 중
+            # 예기치 못한 예외가 나도 전체 파이프라인(8단계까지)은 계속 진행되게 방어.
+            print(f"    [!] Stored XSS 진단 실패 (건너뜀): {e}", file=sys.stderr)
+            p7 = {"skipped": True, "reason": str(e)}
     else:
         p7 = {"skipped": True, "reason": "--base-url 미지정"}
 
