@@ -1,29 +1,9 @@
 """
 Stage 7: Stored XSS Diagnosis
 
-게시글/이미지 캡션 등 사용자 입력을 저장하는 엔드포인트에 XSS 페이로드를 주입하고,
+게시글/이미지 캡션 등 사용자 입력을 저장하는 엔드포인트에 XSS 페이로드를 주입하고
 저장 후 해당 페이지를 방문해 페이로드가 이스케이프 없이 반환되는지 확인한다.
 
-Output 규격:
-{
-  "target": "http://victim.com",
-  "scan_type": "stored_xss",
-  "injection_points": [
-    {
-      "endpoint": "/post/new",
-      "parameter": "content",
-      "method": "POST",
-      "payload": "<script>alert(1)</script>",
-      "stored_url": "/post/5",
-      "vulnerable": true,
-      "evidence": "페이로드가 이스케이프 없이 응답에 포함됨"
-    }
-  ],
-  "summary": {
-    "total_tested": 3,
-    "vulnerable_count": 2
-  }
-}
 """
 
 """
@@ -98,7 +78,7 @@ def _login(session: requests.Session, base_url: str, username: str, password: st
         return False
 
 
-# 요기!!!!!!!!!!!!!!! 는 내용 
+# 게시글 내용 부분에 취약 스트립트 넣고 저장 후, 저장된 페이지 열어서 취약 여부 확인
 def _test_post_content(
     session: requests.Session,
     base_url: str,
@@ -147,7 +127,7 @@ def _test_post_content(
 
     return result
 
-# 요기!!!!!!!!!!!!!!!는 제목 
+# 게시글 제목 부분에 취약 스트립트 넣고 저장 후, 저장된 페이지 열어서 취약 여부 확인
 def _test_post_title(
     session: requests.Session,
     base_url: str,
@@ -190,6 +170,7 @@ def _test_post_title(
     return result
 
 
+# 이미지 캡션 부분에 취약 스트립트 넣고 저장 후, 저장된 페이지 열어서 취약 여부 확인
 def _test_image_caption(
     session: requests.Session,
     base_url: str,
@@ -236,7 +217,7 @@ def _test_image_caption(
 
     return result
 
-
+# 검색 결과에 반영되는 XSS 테스트
 def _test_search_reflected(
     session: requests.Session,
     base_url: str,
@@ -272,14 +253,14 @@ def _test_search_reflected(
 
     return result
 
-
+# 갤러리 HTML에서 가장 최근 이미지 상세 URL 추출
 def _extract_latest_image_url(html: str) -> Optional[str]:
-    """갤러리 HTML에서 가장 최근 이미지 상세 URL 추출."""
     import re
     matches = re.findall(r'href=["\'](/gallery/\d+)["\']', html)
     return matches[0] if matches else None
 
 
+# 전체 파이프라인 실행 함수
 def run_stored_xss_diagnosis(
     target_url: str,
     username: str = "admin",
