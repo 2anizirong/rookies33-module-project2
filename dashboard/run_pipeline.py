@@ -101,14 +101,17 @@ def run_full_pipeline(
     """
 
     def _progress(value: float, text: str) -> None:
+        """진행률(0.0~1.0)과 문구를 on_progress 콜백으로 전달한다 (콜백이 없으면 무시)."""
         if on_progress:
             on_progress(value, text)
 
     def _status(text: str) -> None:
+        """현재 단계 캡션을 on_status 콜백으로 전달한다 (콜백이 없으면 무시)."""
         if on_status:
             on_status(text)
 
     def _emit_logs(logs: list[str]) -> None:
+        """지금까지 쌓인 로그 리스트 전체를 on_log 콜백으로 전달한다 (콜백이 없으면 무시)."""
         if on_log:
             on_log(logs)
 
@@ -131,6 +134,12 @@ def run_full_pipeline(
     child_env["PYTHONUTF8"] = "1"
 
     def stream(command: list[str], cwd: Path, label: str) -> int:
+        """자식 프로세스를 실행하며 stdout을 한 줄씩 읽어 로그/진행률로 중계하고 종료 코드를 반환한다.
+
+        읽은 줄은 logs에 쌓아 _emit_logs로 흘려보내고, STAGE_PROGRESS의 마커가 포함된 줄이면
+        해당 진행률·문구로 갱신한다. 마커가 없는 줄에서는 label을 현재 캡션으로 유지한다.
+        stderr는 stdout에 합쳐 받고, 자식 프로세스는 child_env로 UTF-8 출력을 강제한다.
+        """
         logs.append(f"\n[$] cd {cwd.name} && {' '.join(command)}")
         _emit_logs(logs)
 
@@ -244,6 +253,11 @@ def run_full_pipeline(
 
 
 def main() -> None:
+    """CLI 진입점. 타겟 URL 하나를 인자로 받아 파이프라인을 실행하고 산출물 경로를 출력한다.
+
+    로그는 자식 프로세스의 최신 줄을 그대로 표준 출력에 흘려보내며,
+    실패 시 사유를 stderr에 남기고 종료 코드 1로 빠져나간다.
+    """
     parser = argparse.ArgumentParser(
         description="3단계 진단 파이프라인 실행 (SSRF + SQLi/XSS/OS-CMD/Brute Force)"
     )
