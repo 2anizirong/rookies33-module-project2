@@ -128,32 +128,37 @@ nohup python3 web/app.py > server.log 2>&1 &
 ```
  
 ### 전체 진단 파이프라인 실행
-```bash
-# SSRF + XSS 통합 진단
-python diagnosis/main.py http://<EC2_IP>:5000/fetch \
-  --base-url http://<EC2_IP>:5000 \
-  --skip-sink \
-  -o diagnosis/scan_result.json
+### Stage1 ~ 9 통합 진단
+
+```powershell
+python .\diagnosis\main.py `
+  "http://52.78.187.138:5000/fetch" `
+  --base-url "http://52.78.187.138:5000" `
+  --skip-sink `
+  -o .\diagnosis\AAA.json
 ```
- 
-### AI 분석 실행
- 
-**SSRF 체인 분석:**
-```bash
-cd diagnosis
-python -m ai.analyze --input scan_result.json
+
+> `--base-url`을 생략하면 SQL Injection, Stored XSS, Login Limit 등 기본 URL이 필요한 단계가 생략될 수 있다.
+> 
+
+### SSRF 및 AWS AI 보고서 생성
+
+```powershell
+python .\diagnosis\ai\analyze.py `
+  --input AAA.json
 ```
- 
-**XSS 체인 분석:**
-```bash
-cd diagnosis/ai_etc
-python analyze_etc.py --input ../scan_result.json
-python report_generator_etc.py
+
+### 기타 웹 취약점 AI 보고서 생성
+
+```powershell
+python .\diagnosis\ai_etc\analyze_etc.py `
+  --input AAA.json
 ```
- 
+
 ### 대시보드 실행
-```bash
-streamlit run dashboard/src/dashboard.py
+
+```powershell
+streamlit run .\dashboard\dashboard.py
 ```
 
 
