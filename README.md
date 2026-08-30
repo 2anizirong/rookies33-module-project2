@@ -58,8 +58,7 @@ rookies33-module-project2/
 │   │   ├── stage8_os_command_injection.py  # OS Command Injection 진단
 │   │   └── stage9_login_limit.py           # 로그인 제한 진단
 │   │
-│   ├── main.py                         # 전체 파이프라인 실행 오케스트레이터
-│   └── vector_store_setup.py           # file_search용 Vector Store 생성 (1회 실행)
+│   └── main.py                         # 전체 파이프라인 실행 오케스트레이터
 │
 ├── web/                                # SSRF 취약 웹 서비스
 │   ├── mock/                           # 로컬 테스트용 mock 서버
