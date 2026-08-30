@@ -22,9 +22,6 @@ rookies33-module-project2/
 │       ├── config.json                 # 대시보드 설정
 │       ├── dashboard.py                # 메인 대시보드 진입점
 │       ├── run_pipeline.py             # 진단 파이프라인 실행
-│       ├── side_dashboard.py           # 사이드바 UI
-│       ├── ui.py                       # UI 컴포넌트
-│       ├── report_markdown.py          # 마크다운 리포트 렌더링
 │       └── report_parser.py            # 리포트 파싱
 │
 ├── diagnosis/                          # SSRF 자동 진단 엔진
@@ -39,12 +36,6 @@ rookies33-module-project2/
 │   │   ├── evidence_extractor_etc.py   # 추가 취약점 진단 증거 추출
 │   │   ├── report_generator_etc.py     # 추가 취약점 보고서 생성
 │   │   └── web_research_etc.py         # 추가 취약점 관련 웹서치 기반 보안 자료 조사
-│   │
-│   ├── guides/                         # 파일서치용 보안 가이드 문서
-│   │   ├── CWE-918 Server-Side Request Forge.md
-│   │   ├── Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md
-│   │   ├── 소프트웨어_개발보안_가이드(2021.12.29).pdf
-│   │   └── 주요정보통신기반시설_기술적_취약점_분석_평가_방법_상세가이드.pdf
 │   │
 │   ├── src/                            # 진단 Stage 모듈
 │   │   ├── payloads.py                 # 공격 페이로드 정의
