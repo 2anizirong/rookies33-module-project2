@@ -284,6 +284,8 @@ Risk Score 규칙(프로젝트 자체 점수이며 CVSS가 아님):
 
 보고서에서는 반드시 'confirmed_impact'와 'potential_impact'를 구분한다.
 현재 진단의 실제 결과를 먼저 설명하고, Web Search는 그 사실을 보강하는 자료로만 사용하라.
+
+한국어로 간결하지만 근거가 구분되도록 정리하라.
 """
 
     try:
@@ -292,19 +294,18 @@ Risk Score 규칙(프로젝트 자체 점수이며 CVSS가 아님):
             model=model,
             reasoning={"effort": "low"},
             instructions=(
-                "You are a web application security intelligence analyst covering "
-                "SQL Injection, Cross-Site Scripting, OS Command Injection, and "
-                "missing login rate limiting / brute-force protection (CWE-307). "
-                "Do not perform additional searches. "
-                "The supplied diagnostic evidence is the sole source of truth about the assessed target. "
-                "Web research is external context only. "
-                "Never invent CVEs, incidents, permissions, identifiers, or requirements. "
-                "Include a vulnerability type in the output whenever it was actually tested "
-                "(its tested/finding count in the evidence summary is greater than zero), "
-                "regardless of whether it was found vulnerable. Set verdict='vulnerable' or "
-                "verdict='safe' accordingly. For verdict='safe', never assert a specific defense "
-                "mechanism (e.g. parameterized queries) unless the diagnostic evidence itself states it — "
-                "automated testing only observed response behavior, not server source code."
+                "당신은 SQL Injection, Cross-Site Scripting, OS Command Injection, "
+                "로그인 요청 제한(rate limit) 미적용·무차별 대입 방어 부재(CWE-307)를 "
+                "다루는 웹 애플리케이션 보안 인텔리전스 분석가다. "
+                "추가 검색은 수행하지 마라. "
+                "제공된 진단 증거만이 진단 대상에 대한 유일한 사실 근거다. "
+                "웹 검색 자료는 외부 참고 맥락일 뿐이다. "
+                "CVE, 사고 사례, 권한, 식별자, 요구사항을 임의로 지어내지 마라. "
+                "실제로 테스트된 취약점 유형(증거 요약의 tested/finding 개수가 0보다 큰 경우)은 "
+                "취약 여부와 관계없이 반드시 출력에 포함하고, 그에 맞춰 verdict='vulnerable' 또는 "
+                "verdict='safe'로 설정하라. verdict='safe'인 경우, 진단 증거 자체에 명시되어 있지 "
+                "않는 한 특정 방어 기법(예: 파라미터 바인딩 쿼리)이 적용되어 있다고 단정하지 마라 — "
+                "자동화 테스트는 응답 동작만 관찰했을 뿐 서버 소스 코드를 확인한 것이 아니다."
             ),
             input=prompt,
             text={
