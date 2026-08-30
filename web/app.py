@@ -169,6 +169,8 @@ def new_post():
 @app.route("/post/<pid>")
 def view_post(pid):
     conn = get_db()
+    # ? 쓰지 않고 f-string으로 직접 넣는 식으로 하드 코딩 되어있던 거 시큐어 코딩으로 바꿈 -> XSS 취약점만 확인하기 위함
+    # pid를 정규화하지 않고 그대로 쿼리에 넣음 (SQLi 취약)
     post = conn.execute("SELECT * FROM posts WHERE id=?", (pid,)).fetchone()
     conn.close()
     if not post:
@@ -216,10 +218,11 @@ def upload_image():
         try:
             s3_client.upload_fileobj(
                 file,
-                S3_BUCKET,
+                S3_BUCKET,      # S3 버킷 이름
                 filename,
                 ExtraArgs={"ContentType": file.content_type or "application/octet-stream"}
             )
+            # S3 URL 생성 (공개 접근 가능하도록 설정되어 있다고 가정)
             s3_url = f"https://{S3_BUCKET}.s3.ap-northeast-2.amazonaws.com/{filename}"
         except ClientError as e:
             return f"S3 업로드 실패: {e}", 500
