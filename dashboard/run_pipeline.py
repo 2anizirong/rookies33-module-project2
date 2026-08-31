@@ -32,15 +32,18 @@ PROJECT_ROOT = Path(__file__).resolve().parent          # dashboard/
 DIAGNOSIS_DIR = PROJECT_ROOT.parent / "diagnosis"
 
 # 1단계: diagnosis/main.py <fetch_url> -o scan_result.json --base-url <base_url>  (cwd = dashboard/)
+# diagnosis/main.py 실행 -> output : scan_result.json
 DIAGNOSIS_MAIN = DIAGNOSIS_DIR / "main.py"
 SCAN_RESULT_JSON = DIAGNOSIS_DIR / "scan_result.json"
 
 # 2단계: diagnosis/ai/analyze.py --input scan_result.json   (SSRF 전용, cwd = diagnosis/)
+# diagnosis/ai/analyze.py 실행 -> output : report.md & ai_report.json
 ANALYZE_MAIN = DIAGNOSIS_DIR / "ai" / "analyze.py"
 AI_REPORT_JSON = DIAGNOSIS_DIR / "ai_report.json"
 REPORT_MD = DIAGNOSIS_DIR / "report.md"
 
 # 3단계: diagnosis/ai_etc/analyze_etc.py --input scan_result.json   (SQLi/XSS/OS-CMD/BF, cwd = diagnosis/)
+# diagnosis/ai_etc/analyze_etc.py 실행 -> output : report_etc_*.md & ai_report_etc.json
 ANALYZE_ETC_MAIN = DIAGNOSIS_DIR / "ai_etc" / "analyze_etc.py"
 AI_REPORT_ETC_JSON = DIAGNOSIS_DIR / "ai_report_etc.json"
 
@@ -251,7 +254,7 @@ def run_full_pipeline(
         "_dashboard_timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
 
-
+# 파이프라인 실행
 def main() -> None:
     """CLI 진입점. 타겟 URL 하나를 인자로 받아 파이프라인을 실행하고 산출물 경로를 출력한다.
 

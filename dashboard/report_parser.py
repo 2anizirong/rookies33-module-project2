@@ -104,12 +104,6 @@ def strip_meta_bullets(body: str) -> str:
         keep.append(line)
     return "\n".join(keep).strip()
 
-
-def count_top_level_bullets(body: str) -> int:
-    """중첩되지 않은(들여쓰기 없는) '- ' 항목 개수를 센다."""
-    return len(re.findall(r"^-\s+\S", body, re.MULTILINE))
-
-
 def count_subheadings(body: str) -> int:
     """'### ' 서브헤더 개수를 센다."""
     return len(re.findall(r"^###\s+\S", body, re.MULTILINE))
