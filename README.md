@@ -52,7 +52,6 @@ rookies33-module-project2/
 │   └── main.py                         # 전체 파이프라인 실행 오케스트레이터
 │
 ├── web/                                # SSRF 취약 웹 서비스
-│   ├── mock/                           # 로컬 테스트용 mock 서버
 │   ├── templates/                      # Flask HTML 템플릿
 │   │   ├── base.html
 │   │   ├── gallery.html

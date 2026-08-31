@@ -1,3 +1,13 @@
+"""
+report_parser.py
+AI 보안 리포트(Markdown 텍스트)를 대시보드가 카드/메트릭으로 렌더할 수 있도록
+섹션·메타데이터·목록 단위로 파싱하는 헬퍼 모음.
+
+또한 report.md 파일이 없을 때 ai_report.json의 "report" 필드를 동일한 Markdown으로
+되돌리는 어댑터(report_json_to_markdown)를 제공해, 이후 파싱 로직이 md/json 어느
+쪽에서 왔든 똑같이 동작하게 한다.
+"""
+
 from __future__ import annotations
 
 import re
@@ -44,6 +54,7 @@ def parse_sections(markdown_text: str) -> list[dict[str, str]]:
 
 
 def get_report_title(sections: list[dict[str, str]]) -> str:
+    """parse_sections 결과에서 리포트 제목(`# ...`)을 찾아 반환한다(없으면 기본 제목)."""
     for section in sections:
         if "__title__" in section:
             return section["__title__"]
@@ -51,6 +62,7 @@ def get_report_title(sections: list[dict[str, str]]) -> str:
 
 
 def find_section(sections: list[dict[str, str]], keyword: str) -> dict[str, str] | None:
+    """제목에 keyword가 포함된 첫 번째 섹션을 반환한다(없으면 None)."""
     for section in sections:
         if "title" in section and keyword in section["title"]:
             return section
@@ -58,6 +70,11 @@ def find_section(sections: list[dict[str, str]], keyword: str) -> dict[str, str]
 
 
 def extract_meta(markdown_text: str) -> dict[str, Any]:
+    """리포트 본문에서 Severity/Score/Target/Generated 값을 정규식으로 뽑아 dict로 반환한다.
+
+    히어로 영역·메트릭 카드에 쓰이며, 값이 없으면 severity="UNKNOWN", score=0.0,
+    나머지는 None으로 채운다(파싱 실패해도 렌더가 깨지지 않도록).
+    """
     severity_m = re.search(r"Severity:\s*\*\*([A-Za-z]+)\*\*", markdown_text)
     score_m = re.search(r"Score:\s*\*\*([\d.]+)\s*/\s*10\*\*", markdown_text)
     target_m = re.search(r"Target:\s*`([^`]+)`", markdown_text)
@@ -86,12 +103,6 @@ def strip_meta_bullets(body: str) -> str:
             continue
         keep.append(line)
     return "\n".join(keep).strip()
-
-
-def count_top_level_bullets(body: str) -> int:
-    """중첩되지 않은(들여쓰기 없는) '- ' 항목 개수를 센다."""
-    return len(re.findall(r"^-\s+\S", body, re.MULTILINE))
-
 
 def count_subheadings(body: str) -> int:
     """'### ' 서브헤더 개수를 센다."""
@@ -133,6 +144,7 @@ def extract_subsection(body: str, keyword: str) -> str:
 
 
 def extract_numbered_list(text: str) -> list[str]:
+    """'1. ...', '2. ...' 형태의 번호 매긴 목록 항목들을 순서대로 뽑는다(공격 체인 등)."""
     return re.findall(r"^\d+\.\s+(.+)$", text, re.MULTILINE)
 
 
